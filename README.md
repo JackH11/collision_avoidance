@@ -9,7 +9,9 @@ This project is a simple Pygame simulation where multiple 2D items move around t
 
 ## Requirements
 - Python 3.7+
+- TensorFlow 2.10+
 - Pygame
+- Gym
 
 ## Setup
 1. Create and activate a virtual environment (optional but recommended):
@@ -19,7 +21,7 @@ This project is a simple Pygame simulation where multiple 2D items move around t
    ```
 2. Install dependencies:
    ```bash
-   pip install pygame
+   pip install -r requirements.txt
    ```
 
 ## Running the Simulation

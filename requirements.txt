@@ -1,0 +1,3 @@
+tensorflow>=2.100
+pygame>=20
+gym>=0.21 
