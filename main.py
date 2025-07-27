@@ -5,14 +5,13 @@ import uuid
 
 from nn.nn import nll_gaussian, ClippedLogVar
 from utils import get_model, save_data, get_data
-from model_prediction import agent_uncertain_predict, update_item_async
+from model_prediction import agent_uncertain_predict, update_item_async, make_nn_prediction, make_simple_prediction
 from gym_env import MovingItem, MovingAgent
-
+import numpy as np
+from config import CONFIG
 from stable_baselines3 import DQN
-
 from concurrent.futures import ThreadPoolExecutor
-
-#from gym_env import MovingAvoidanceEnv
+from gym_env import MovingAvoidanceEnv
 
 
 def draw_item_async(item, surface,color=None):
@@ -27,19 +26,19 @@ SAVE = False
 RENDER = True
 
 # Screen dimensions
-WIDTH, HEIGHT = 200, 200
-ITEM_RADIUS = 15
+WIDTH, HEIGHT = 400, 400
+ITEM_RADIUS = 5
 ITEM_COUNT = 5
 MAX_STEPS = 1000
 AGENT_SPEED = 3.0
 
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-BLUE = (0, 0, 255)
-GREEN = (0, 255, 0)
-ORANGE = (255, 128, 0)
+WHITE = tuple(CONFIG["colors"]["white"])
+BLACK = tuple(CONFIG["colors"]["black"])
+RED = tuple(CONFIG["colors"]["red"])
+BLUE = tuple(CONFIG["colors"]["blue"])
+GREEN = tuple(CONFIG["colors"]["green"])
+LIGHT_GREY = tuple(CONFIG["colors"]["light_grey"])
+ORANGE = tuple(CONFIG["colors"]["orange"])
 
 if RENDER:
     pygame.init()
@@ -48,7 +47,7 @@ if RENDER:
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 30)  # default font, size 30
 
-#env = MovingAvoidanceEnv()
+env = MovingAvoidanceEnv()
 
 def render(items):
 
@@ -58,21 +57,13 @@ def render(items):
 
 executor = ThreadPoolExecutor(max_workers=4)
 
-model = get_model(
-    "j_10_5", 
-    custom_objects={'nll_gaussian': nll_gaussian, 'ClippedLogVar': ClippedLogVar},
-    safe_mode=False
-)
-
-
 def main():
-    items = [MovingItem(add_noise=True) for i in range(ITEM_COUNT)]
+    obstacles = [MovingItem(add_noise=True) for i in range(ITEM_COUNT)]
+    #agent = MovingAgent(make_nn_prediction,add_noise=False)
+    agent = MovingAgent(make_simple_prediction, add_noise=False)
 
-    agent = MovingAgent(add_noise=False)
+    dqn_model = DQN.load("agents/dqn_avoidance_agent4")
 
-    #model = DQN.load("dqn_avoidance_agent")
-
-    
     running = True
     frame = 0
     episode = uuid.uuid4()
@@ -108,15 +99,15 @@ def main():
         print("Frame: ", frame)
 
         # Update All Items
-        update_futures = [executor.submit(update_item_async, item) for item in items]
+        update_futures = [executor.submit(update_item_async, obstacle) for obstacle in obstacles]
 
         # Wait for all updates to complete
         for future in update_futures:
             future.result()
 
         if SAVE:
-            for item in items:
-                data.append({'episode':episode,'frame':frame,'item':item.id, 'x':item.x, 'y':item.y, 'vx':item.vx, 'vy':item.vy})
+            for obstacle in obstacles:
+                data.append({'episode':episode,'frame':frame,'item':obstacle.id, 'x':obstacle.x, 'y':obstacle.y, 'vx':obstacle.vx, 'vy':obstacle.vy})
         
 
         if RENDER:
@@ -126,119 +117,33 @@ def main():
             
             screen.fill(WHITE)
 
-            # Check collisions
-            min_dist = float("inf")
-            closest_item = None
-            for obs in items:
-                if not isinstance(obs, MovingAgent):
-                    dist = math.hypot(obs.x - agent.x, obs.y - agent.y)
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_item = obs
-                        pygame.draw.circle(screen, BLUE, (int(agent.x), int(agent.y)), 3)  # agent center
-                        pygame.draw.circle(screen, BLUE, (int(obs.x), int(obs.y)), 3)  # obstacle center
-
-                    if min_dist < ITEM_RADIUS * 2:
-                        score = -10
-                    else:
-                        score = 1.0
-
-
-
             draw_futures = []
-            for item in items:
-                if not isinstance(item, MovingAgent):
-                    color = ORANGE if item is closest_item else None
-                    draw_futures.append(executor.submit(draw_item_async, item, screen, color))
-            #draw_futures = [executor.submit(draw_item_async, item, screen) for item in items if not isinstance(item, MovingAgent)]
+            for obstacle in obstacles:
+                draw_futures.append(executor.submit(draw_item_async, obstacle, screen, LIGHT_GREY))
 
             # Wait for all draws to complete
             for future in draw_futures:
                 future.result()
 
             # Run predictions
-            futures = [executor.submit(agent_uncertain_predict, model, item) for item in items]
+            uncertainty_predictions = agent.make_predictions(obstacles)
 
-            # Wait for all predictions to complete
-            uncertainty_predictions = []
-            for i, future in enumerate(futures):
-                try:
-                    pred_x, pred_y, std_x, std_y  = future.result()
-                    uncertainty_predictions.append((pred_x, pred_y, std_x, std_y))
-                except Exception as e:
-                    print(f"Prediction error: {e}")
+            for obstacle in obstacles:
+                obstacle.draw(screen, obstacle)
 
-            for item in items:
-                if isinstance(item, MovingAgent):
-                    item.draw(screen, [item for item in items if not isinstance(item, MovingAgent)], uncertainty_predictions)
+            obs = agent.get_observation(obstacles)
 
-            #obs = agent.get_observation(items,uncertainty_predictions)
+            action, _states = dqn_model.predict(obs)
 
-            #action, _states = model.predict(obs)
+            dx, dy = env._action_to_velocity(action)
+            agent.vx = dx
+            agent.vy = dy
 
-            #dx, dy = env._action_to_velocity(action)
+            agent.update()
 
+            agent.draw(screen,obstacles,uncertainty_predictions)
 
-
-
-
-            score_surface = font.render(f"Score: {score}", True, (0, 0, 0))  # black text
-            score_rect = score_surface.get_rect(topright=(WIDTH - 10, 10))
-            screen.blit(score_surface, score_rect)
-
-            pos_text = f"Agent: ({int(agent.x)}, {int(agent.y)})"
-            pos_surface = font.render(pos_text, True, (0, 0, 0))
-            # position it just below the score
-            pos_rect = pos_surface.get_rect(topright=(WIDTH - 10, 40))  # 40px down from top
-            screen.blit(pos_surface, pos_rect)
-
-            dist_surface = font.render(f"Dist: {min_dist:.2f}", True, (0, 0, 0))  # two decimals
-            dist_rect = dist_surface.get_rect(topright=(WIDTH - 10, 70))  # below the others
-            screen.blit(dist_surface, dist_rect)
-
-
-            # Draw all predictions at once
-            for i, (item, (pred_x, pred_y, std_x, std_y)) in enumerate(zip(items, uncertainty_predictions)):
-                prediction_color = GREEN if item.add_noise else RED
-                # Draw anti-aliased prediction circles
-                pygame.draw.circle(screen, prediction_color, (int(pred_x), int(pred_y)), 5, 0)
-                pygame.draw.circle(screen, BLACK, (int(pred_x), int(pred_y)), 5, 1)
-                # Draw anti-aliased lines
-                pygame.draw.line(screen, BLACK, (int(item.x), int(item.y)), (int(pred_x), int(pred_y)), 2)
-
-                # Calculate angle between current position and prediction
-                dx = pred_x - item.x
-                dy = pred_y - item.y
-                angle = math.atan2(dy, dx)
-
-                # Calculate variance-based angle spread (inverse relationship)
-                # Higher variance = smaller angle spread
-                total_variance = std_x + std_y
-                max_angle_spread = math.pi / 2  # 90 degrees total (45 degrees each side)
-                angle_spread = max_angle_spread / (1 + total_variance)  # Inverse relationship
-
-                # Draw pie slice
-                points = [(int(item.x), int(item.y))]  # Start at current position
-                
-                # Add arc points
-                steps = 20
-                for i in range(steps + 1):
-                    current_angle = angle - angle_spread + (2 * angle_spread * i / steps)
-                    radius = math.sqrt(dx**2 + dy**2)  # Distance to prediction point
-                    x = item.x + radius * math.cos(current_angle)
-                    y = item.y + radius * math.sin(current_angle)
-                    points.append((int(x), int(y)))
-                
-                points.append((int(item.x), int(item.y)))  # Close the polygon
-                
-                # Draw filled polygon with semi-transparency
-                surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-                pygame.draw.polygon(surface, (128, 128, 128, 64), points)  # Light gray, semi-transparent
-                screen.blit(surface, (0, 0))
-                
-                # Draw outline
-                pygame.draw.polygon(screen, (128, 128, 128), points, 1)  # Solid gray outline
-        
+            env.draw_predictions(screen,obstacles,uncertainty_predictions)
 
         if RENDER:
             pygame.display.flip()

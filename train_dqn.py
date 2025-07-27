@@ -1,10 +1,12 @@
 from stable_baselines3 import DQN
 from stable_baselines3.common.env_util import make_vec_env
 from gym_env import MovingAvoidanceEnv
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
 import numpy as np
-from stable_baselines3.common.utils import get_schedule_fn
+from stable_baselines3.common.utils import get_schedule_fn, get_linear_fn
 
+#TODO
+# Add a config file with global parameters
 
 class ActionLoggingCallback(BaseCallback):
     def __init__(self, verbose=0, action_space_size=None):
@@ -44,13 +46,18 @@ class ActionLoggingCallback(BaseCallback):
 
         return True
 
-
+checkpoint_callback = CheckpointCallback(
+    save_freq=10_000,
+    save_path='./checkpoints',
+    name_prefix='dqn_model',
+)
 
 # Wrap the custom env with make_vec_env
 env = make_vec_env(lambda: MovingAvoidanceEnv(), n_envs=1)
 
-#model = DQN.load("dqn_avoidance_agent", env=env)
+#model = DQN.load("dqn_avoidance_agent2", env=env)
 # Create DQN model
+
 
 model = DQN(
     policy="MlpPolicy",
@@ -64,18 +71,20 @@ model = DQN(
     target_update_interval=100,
     verbose=1,
     tensorboard_log="./dqn_tensorboard/",
-    exploration_fraction=0.9,
-    exploration_initial_eps=0.5,
-    exploration_final_eps=0.1,
+    exploration_fraction=0.95,
+    exploration_initial_eps=0.8,
+    exploration_final_eps=0.2,
 )
 
-#model.exploration_rate = 0.3
-#model.exploration_schedule = get_schedule_fn(0.3)  # constant schedule # set initial value
+
+
 
 action_callback = ActionLoggingCallback(action_space_size=env.action_space.n)
 
+callbacks = CallbackList([action_callback, checkpoint_callback])
+
 # Train for 100,000 timesteps
-model.learn(total_timesteps=50_000,tb_log_name="dqn",callback=action_callback)
+model.learn(total_timesteps=300_000,tb_log_name="dqn",callback=callbacks)
 
 # Save model
-model.save("dqn_avoidance_agent")
+model.save("dqn_avoidance_agent4")
