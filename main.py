@@ -1,9 +1,7 @@
 import pygame
 import sys
-import math
 import uuid
 
-from nn.nn import nll_gaussian, ClippedLogVar
 from utils import get_model, save_data, get_data
 from model_prediction import agent_uncertain_predict, update_item_async, make_nn_prediction, make_simple_prediction
 from gym_env import MovingItem, MovingAgent
@@ -12,13 +10,10 @@ from config import CONFIG
 from stable_baselines3 import DQN
 from concurrent.futures import ThreadPoolExecutor
 from gym_env import MovingAvoidanceEnv
+from functools import partial
 
 
-def draw_item_async(item, surface,color=None):
-    """Asynchronous draw function"""
 
-    item.draw(surface,color)
-    return item
 
 data = []
 
@@ -26,11 +21,12 @@ SAVE = False
 RENDER = True
 
 # Screen dimensions
-WIDTH, HEIGHT = 400, 400
-ITEM_RADIUS = 5
-ITEM_COUNT = 5
+WIDTH = CONFIG["window"]["width"]
+HEIGHT = CONFIG["window"]["height"]
+ITEM_RADIUS = CONFIG["obstacle"]["radius"]
+ITEM_COUNT = CONFIG["obstacle"]["count"]
 MAX_STEPS = 1000
-AGENT_SPEED = 3.0
+AGENT_SPEED = CONFIG["agent"]["speed"]
 
 WHITE = tuple(CONFIG["colors"]["white"])
 BLACK = tuple(CONFIG["colors"]["black"])
@@ -39,6 +35,7 @@ BLUE = tuple(CONFIG["colors"]["blue"])
 GREEN = tuple(CONFIG["colors"]["green"])
 LIGHT_GREY = tuple(CONFIG["colors"]["light_grey"])
 ORANGE = tuple(CONFIG["colors"]["orange"])
+PURPLE = tuple(CONFIG["colors"]["purple"])
 
 if RENDER:
     pygame.init()
@@ -59,41 +56,16 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 def main():
     obstacles = [MovingItem(add_noise=True) for i in range(ITEM_COUNT)]
-    #agent = MovingAgent(make_nn_prediction,add_noise=False)
+
+    # make_simple_prediction and make_nn_prediction
     agent = MovingAgent(make_simple_prediction, add_noise=False)
 
-    dqn_model = DQN.load("agents/dqn_avoidance_agent4")
+
+    dqn_model = DQN.load("dqn_avoidance_agent5")
 
     running = True
     frame = 0
     episode = uuid.uuid4()
-    """
-
-    df = get_data("train_lag")
-    df_sorted = df.sort_values(by=["frame", "item"], ascending=[True, True])
-
-    df_sorted = df_sorted.reset_index(drop=True)
-    df_sorted["frame_change"] = df_sorted["frame"] != df_sorted["frame"].shift()
-
-    for idx, row in df_sorted.iterrows():
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-        if row["frame_change"]:
-            pygame.time.wait(100)
-            screen.fill(WHITE)      
-
-        item = MovingItem(add_noise=False)
-        item.x = row["x_lag_20"]
-        item.y = row["y_lag_20"]
-        item.draw(screen)
-        pygame.draw.circle(screen, (255,0,0), (row["x"],row["y"]), 5, width=0)
-        pygame.display.flip()
-        
-       #clock.tick(30)  # Increased from 60 to 120 FPS for smoother motion
-    """
 
     while frame < 10000:
         print("Frame: ", frame)
@@ -106,6 +78,7 @@ def main():
             future.result()
 
         if SAVE:
+            # Collect Data about Obstacles locations
             for obstacle in obstacles:
                 data.append({'episode':episode,'frame':frame,'item':obstacle.id, 'x':obstacle.x, 'y':obstacle.y, 'vx':obstacle.vx, 'vy':obstacle.vy})
         
@@ -117,13 +90,9 @@ def main():
             
             screen.fill(WHITE)
 
-            draw_futures = []
-            for obstacle in obstacles:
-                draw_futures.append(executor.submit(draw_item_async, obstacle, screen, LIGHT_GREY))
-
-            # Wait for all draws to complete
-            for future in draw_futures:
-                future.result()
+            # draw obstacles
+            draw_func = partial(draw_item_async, surface=screen, color=LIGHT_GREY)
+            list(executor.map(draw_func, obstacles))
 
             # Run predictions
             uncertainty_predictions = agent.make_predictions(obstacles)
@@ -131,7 +100,7 @@ def main():
             for obstacle in obstacles:
                 obstacle.draw(screen, obstacle)
 
-            obs = agent.get_observation(obstacles)
+            obs = agent.get_observation(obstacles, env)
 
             action, _states = dqn_model.predict(obs)
 
@@ -139,15 +108,24 @@ def main():
             agent.vx = dx
             agent.vy = dy
 
+
+
+            reward = env.get_reward(agent)
+            text_surface = font.render(f"Reward: {reward}", True, BLACK)
+            text_rect = text_surface.get_rect()
+            text_rect.topright = (WIDTH - 10, 10)  # 10 px padding from the top-right corner
+            screen.blit(text_surface, text_rect)
+
             agent.update()
 
-            agent.draw(screen,obstacles,uncertainty_predictions)
+            env.draw_arrow_from_base(screen, BLACK, agent.x, agent.y, action)
+            agent.draw(screen,env,obstacles,uncertainty_predictions,True)
 
-            env.draw_predictions(screen,obstacles,uncertainty_predictions)
+            #env.draw_predictions(screen,obstacles,uncertainty_predictions)
+            env.draw_goal(screen)
 
-        if RENDER:
             pygame.display.flip()
-            clock.tick(120)  # Increased from 60 to 120 FPS for smoother motion
+            clock.tick(120)
 
         frame += 1
 

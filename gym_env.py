@@ -5,21 +5,18 @@ import math
 import numpy as np
 from numpy.f2py.auxfuncs import throw_error
 import asyncio
+import math
 
 from config import CONFIG
-
-
 from utils import point_in_polygon
-
 from gym import spaces
-
 from model_prediction import make_simple_prediction
 
 from concurrent.futures import ThreadPoolExecutor
 from nn.nn import nll_gaussian, ClippedLogVar
 from utils import get_model
+from functools import partial
 
-import time
 # Colors
 WHITE = tuple(CONFIG["colors"]["white"])
 BLACK = tuple(CONFIG["colors"]["black"])
@@ -28,13 +25,20 @@ BLUE = tuple(CONFIG["colors"]["blue"])
 GREEN = tuple(CONFIG["colors"]["green"])
 LIGHT_GREY = tuple(CONFIG["colors"]["light_grey"])
 ORANGE = tuple(CONFIG["colors"]["orange"])
+PURPLE = tuple(CONFIG["colors"]["purple"])
+
 
 # Screen dimensions
-WIDTH, HEIGHT = 200, 200
-ITEM_RADIUS = 8
-ITEM_COUNT = 5
+WIDTH = CONFIG["boundary"]["width"]
+HEIGHT = CONFIG["boundary"]["height"]
+WINDOW_WIDTH = CONFIG["window"]["width"]
+WINDOW_HEIGHT = CONFIG["window"]["height"]
+ITEM_RADIUS = CONFIG["obstacle"]["radius"]
+ITEM_COUNT = CONFIG["obstacle"]["count"]
+AGENT_SPEED = CONFIG["agent"]["speed"]
 MAX_STEPS = 1000
-AGENT_SPEED = 3.0
+GOAL_RADIUS = CONFIG["goal"]["radius"]
+GOAL_COLOR = tuple(CONFIG["goal"]["color"])
 
 executor = ThreadPoolExecutor(max_workers=4)
 
@@ -44,23 +48,52 @@ model = get_model(
     safe_mode=False
 )
 
+def draw_item_async(item, surface,color=None):
+    """Asynchronous draw function"""
+
+    item.draw(surface,color)
+    return item
+
+
+
 
 class MovingAvoidanceEnv(Env):
-    def __init__(self):
+    def __init__(self, render=False):
         super(MovingAvoidanceEnv, self).__init__()
         self.ITEM_COUNT = 5
 
-        self.observation_space = spaces.Box(low=-1, high=3, shape=(3,30,30), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-1, high=4, shape=(3,30,30), dtype=np.float32)
         self.action_space = spaces.Discrete(8)
 
         self.agent = None
         self.obstacles = []
         self.steps = 0
 
+        self.goal_x = None
+        self.goal_y = None
+        self.resetFood = True
+
+        self.generate_goal()
+
+        self.render = render
+
+        if render:
+            pygame.init()
+            self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+            self.clock = pygame.time.Clock()
+            self.font = pygame.font.SysFont(None, 30)  # default font, size 30
+            pygame.display.set_caption('2D Moving Items - Prediction Agent')
+
+
     def seed(self, seed=None):
         from gym.utils import seeding
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
+
+    def generate_goal(self):
+
+        self.goal_x = random.randint(GOAL_RADIUS, WIDTH - GOAL_RADIUS)
+        self.goal_y = random.randint(GOAL_RADIUS, HEIGHT - GOAL_RADIUS)
 
     def reset(self):
 
@@ -75,8 +108,32 @@ class MovingAvoidanceEnv(Env):
             item = MovingItem(add_noise=True)
             self.obstacles.append(item)
 
+        self.goal_x = random.randint(GOAL_RADIUS, WIDTH - GOAL_RADIUS)
+        self.goal_y = random.randint(GOAL_RADIUS, HEIGHT - GOAL_RADIUS)
+
         self.steps = 0
         return self._get_obs()
+
+    def calculate_goal_distance(self, x, y):
+
+        x_dist = abs(self.goal_x - x)
+        y_dist = abs(self.goal_y - y)
+        dist = math.hypot(x_dist, y_dist)
+
+        return dist
+
+    def calculate_goal_change_distance(self, agent):
+        """
+        Calculates the change in distance between the agent and the goal between this step and the last
+        """
+        if len(agent.xs) < 2:
+            return 0
+
+        d1 = self.calculate_goal_distance(agent.xs[-1], agent.ys[-1])
+        d2 = self.calculate_goal_distance(agent.xs[-2], agent.ys[-2])
+        distance_change = d1 - d2
+        return distance_change
+
 
     def step(self, action):
         self.steps += 1
@@ -93,24 +150,92 @@ class MovingAvoidanceEnv(Env):
         for obs in self.obstacles:
             obs.update()
 
+        done = self.steps >= MAX_STEPS
+
+        dist = math.hypot(self.goal_x - self.agent.x, self.goal_y - self.agent.y)
+        if dist < GOAL_RADIUS + ITEM_RADIUS:
+            done = True
+            return self._get_obs(), 100, True, {}
+
         for obs in self.obstacles:
             dist = math.hypot(obs.x - self.agent.x, obs.y - self.agent.y)
             if dist < ITEM_RADIUS * 2:
-                return self._get_obs(), -10, True, {}
+                done = True
+                return self._get_obs(), -50, done, {}
 
-        done = self.steps >= MAX_STEPS
-        return self._get_obs(), 1.0, done, {}
+
+        distance_change = self.calculate_goal_change_distance(self.agent)
+
+        return self._get_obs(), distance_change - 5, done, {}
+
+
+    def render(self):
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+
+
+        self.screen.fill(WHITE)
+
+        draw_func = partial(draw_item_async, surface=self.screen, color=LIGHT_GREY)
+        list(executor.map(draw_func, self.obstacles))
+
+        uncertainty_predictions = self.agent.make_predictions(self.obstacles)
+
+        for obstacle in self.obstacles:
+            obstacle.draw(self.screen, obstacle)
+
+        reward = self.get_reward(self.agent)
+        text_surface = self.font.render(f"Reward: {reward}", True, BLACK)
+        text_rect = text_surface.get_rect()
+        text_rect.topright = (WIDTH - 10, 10)  # 10 px padding from the top-right corner
+        self.screen.blit(text_surface, text_rect)
+
+        self.draw_arrow_from_base(self.screen, BLACK, self.agent.x, self.agent.y, self.action)
+        self.draw(self.screen, self, self.obstacles, uncertainty_predictions, True)
+
+        self.draw_goal(self.screen)
+
+        pygame.display.flip()
+        self.clock.tick(120)
+
+
+    def get_reward(self, agent):
+
+        dist = math.hypot(self.goal_x - agent.x, self.goal_y - agent.y)
+        if dist < GOAL_RADIUS + ITEM_RADIUS:
+            return 100
+
+        for obs in self.obstacles:
+            dist = math.hypot(obs.x - agent.x, obs.y - agent.y)
+            if dist < ITEM_RADIUS * 2:
+                return -50
+
+        distance_change = self.calculate_goal_change_distance(agent)
+
+        return distance_change - 5
+
 
     def _get_obs(self):
 
-        obs = self.agent.get_observation(self.obstacles)
+        obs = self.agent.get_observation(self.obstacles, self)
 
         return obs
 
-    def _action_to_velocity(self, action):
+    def _action_to_angle(self, action):
         angles = [0, 45, 90, 135, 180, 225, 270, 315]
-        angle_rad = math.radians(angles[action])
+        return math.radians(angles[action])
+
+    def _action_to_velocity(self, action):
+        angle_rad = self._action_to_angle(action)
         return AGENT_SPEED * math.cos(angle_rad), AGENT_SPEED * math.sin(angle_rad)
+
+    def draw_goal(self, surface):
+        if not self.goal_x or not self.goal_y:
+            self.generate_goal()
+        pygame.draw.circle(surface, GOAL_COLOR, (WINDOW_WIDTH/2 - WIDTH/2 + self.goal_x, WINDOW_HEIGHT/2 - HEIGHT/2 + self.goal_y), GOAL_RADIUS)
 
     def draw_predictions(self, surface, items, predictions):
 
@@ -118,10 +243,10 @@ class MovingAvoidanceEnv(Env):
         for i, (item, (pred_x, pred_y, std_x, std_y)) in enumerate(zip(items, predictions)):
             prediction_color = GREEN if item.add_noise else RED
             # Draw anti-aliased prediction circles
-            pygame.draw.circle(surface, prediction_color, (int(pred_x), int(pred_y)), 5, 0)
-            pygame.draw.circle(surface, BLACK, (int(pred_x), int(pred_y)), 5, 1)
+            pygame.draw.circle(surface, prediction_color, (WINDOW_WIDTH/2 - WIDTH/2 + int(pred_x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(pred_y)), 5, 0)
+            pygame.draw.circle(surface, BLACK, (WINDOW_WIDTH/2 - WIDTH/2 + int(pred_x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(pred_y)), 5, 1)
             # Draw anti-aliased lines
-            pygame.draw.line(surface, BLACK, (int(item.x), int(item.y)), (int(pred_x), int(pred_y)), 2)
+            pygame.draw.line(surface, BLACK, (WINDOW_WIDTH/2 - WIDTH/2 + int(item.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(item.y)), (WINDOW_WIDTH/2 - WIDTH/2 + int(pred_x), int(WINDOW_HEIGHT/2 - HEIGHT/2 + pred_y)), 2)
 
             # Calculate angle between current position and prediction
             dx = pred_x - item.x
@@ -135,7 +260,7 @@ class MovingAvoidanceEnv(Env):
             angle_spread = max_angle_spread / (1 + total_variance)  # Inverse relationship
 
             # Draw pie slice
-            points = [(int(item.x), int(item.y))]  # Start at current position
+            points = [(WINDOW_WIDTH/2 - WIDTH/2 + int(item.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(item.y))]  # Start at current position
 
             # Add arc points
             steps = 20
@@ -144,9 +269,9 @@ class MovingAvoidanceEnv(Env):
                 radius = math.sqrt(dx ** 2 + dy ** 2)  # Distance to prediction point
                 x = item.x + radius * math.cos(current_angle)
                 y = item.y + radius * math.sin(current_angle)
-                points.append((int(x), int(y)))
+                points.append((WINDOW_WIDTH/2 - WIDTH/2 + int(x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(y)))
 
-            points.append((int(item.x), int(item.y)))  # Close the polygon
+            points.append((WINDOW_WIDTH/2 - WIDTH/2 + int(item.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(item.y)))  # Close the polygon
 
             # Draw filled polygon with semi-transparency
             #surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -156,7 +281,33 @@ class MovingAvoidanceEnv(Env):
             # Draw outline
             pygame.draw.polygon(surface, (128, 128, 128), points, 1)  # Solid gray outline
 
+    def draw_arrow_from_base(self, surface, color, base_x, base_y, action, length=20, arrowhead_length=6,
+                             arrowhead_angle=30, width=2):
+        # Convert angle to radians
 
+        base_x = WINDOW_WIDTH/2 - WIDTH/2 + base_x
+        base_y = WINDOW_HEIGHT/2 - HEIGHT/2 + base_y
+
+        angle_rad = self._action_to_angle(action)
+
+        # Calculate the end of the arrow shaft
+        end_x = base_x + length * math.cos(angle_rad)
+        end_y = base_y + length * math.sin(angle_rad)
+
+        # Draw the shaft
+        pygame.draw.line(surface, color, (base_x, base_y), (end_x,end_y), width)
+
+        # Calculate the two arrowhead points
+        left_angle = angle_rad + math.radians(180 - arrowhead_angle)
+        right_angle = angle_rad - math.radians(180 - arrowhead_angle)
+
+        left = (end_x + arrowhead_length * math.cos(left_angle),
+                end_y + arrowhead_length * math.sin(left_angle))
+        right = (end_x + arrowhead_length * math.cos(right_angle),
+                 end_y + arrowhead_length * math.sin(right_angle))
+
+        # Draw the arrowhead as a filled triangle
+        pygame.draw.polygon(surface, color, [(end_x, end_y), left, right])
 
 class MovingItem:
 
@@ -240,17 +391,15 @@ class MovingItem:
         if color is not None:
             color = color
         # Use anti-aliased circle for smoother appearance
-        pygame.draw.circle(surface, color, (int(self.x), int(self.y)), ITEM_RADIUS, 0)
+        pygame.draw.circle(surface, color, (WINDOW_WIDTH/2 - WIDTH/2 + int(self.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y)), ITEM_RADIUS, 0)
         # Add a subtle outline for better definition
-        pygame.draw.circle(surface, BLACK, (int(self.x), int(self.y)), ITEM_RADIUS, 1)
+        pygame.draw.circle(surface, BLACK, (WINDOW_WIDTH/2 - WIDTH/2 + int(self.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y)), ITEM_RADIUS, 1)
 
     def get_position(self):
         return self.x, self.y
 
     def get_history(self, lag=5,window=10):
         # Get the last 'lag' values for each feature
-        #if len(self.xs) < lag+window:
-            #return np.zeros(lag*4)
         x_history = self.xs[-window:]
         y_history = self.ys[-window:]
         vx_history = self.vxs[-window:]
@@ -284,7 +433,7 @@ class MovingAgent(MovingItem):
     def get_state(self):
         return [self.x, self.y, self.vx, self.vy]
 
-    def get_observation(self, items):
+    def get_observation(self, items, env):
 
         predictions = self.make_predictions(items)
 
@@ -325,6 +474,13 @@ class MovingAgent(MovingItem):
                             cell_vx, cell_vy = item.get_normalize_velocity()
                             break  # no need to check further
 
+                        goal_dist = env.calculate_goal_distance(dot_x, dot_y)
+
+                        if goal_dist < (dot_radius + GOAL_RADIUS):
+                            cell_value = 4
+                            cell_vx, cell_vy = 0,0
+                            break
+
                         points = [(int(item.x), int(item.y))]  # Start at current position
 
                         pred_x, pred_y, std_x, std_y = predictions[i]
@@ -360,12 +516,12 @@ class MovingAgent(MovingItem):
 
         return obs
 
-    def draw(self, surface,items=None,predictions=None):
+    def draw(self, surface,env, items=None,predictions=None, dots=False):
         color = LIGHT_GREY
         # Use anti-aliased circle for smoother appearance
-        pygame.draw.circle(surface, color, (int(self.x), int(self.y)), ITEM_RADIUS, 0)
+        pygame.draw.circle(surface, color, (WINDOW_WIDTH/2 - WIDTH/2 + int(self.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y)), ITEM_RADIUS, 0)
         # Add a subtle outline for better definition
-        pygame.draw.circle(surface, BLACK, (int(self.x), int(self.y)), ITEM_RADIUS, 1)
+        pygame.draw.circle(surface, BLACK, (WINDOW_WIDTH/2 - WIDTH/2 + int(self.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y)), ITEM_RADIUS, 1)
 
         # --- Add red dots in a 10x10 square around the item ---
         dot_color = BLUE  # red
@@ -377,27 +533,30 @@ class MovingAgent(MovingItem):
         if not items or not predictions:
             return
 
-        grid = self.get_observation(items)[0]
+        if dots:
+            grid = self.get_observation(items, env)[0]
 
-        for dx in range(-half_count, half_count):
-            for dy in range(-half_count, half_count):
-                dot_x = int(self.x + dx * spacing)
-                dot_y = int(self.y + dy * spacing)
+            for dx in range(-half_count, half_count):
+                for dy in range(-half_count, half_count):
+                    dot_x = WINDOW_WIDTH/2 - WIDTH/2 + int(self.x + dx * spacing)
+                    dot_y = WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y + dy * spacing)
 
-                color_value = grid[dx + half_count, dy + half_count]
-                if color_value == 0:
-                    dot_color = GREEN
-                elif color_value == 1:
-                    dot_color = ORANGE
-                elif color_value == 2:
-                    dot_color = RED
-                elif color_value == 3:
-                    dot_color = BLACK
-                else:
-                    throw_error("Invalid color")
+                    color_value = grid[dx + half_count, dy + half_count]
+                    if color_value == 0:
+                        dot_color = GREEN
+                    elif color_value == 1:
+                        dot_color = ORANGE
+                    elif color_value == 2:
+                        dot_color = RED
+                    elif color_value == 3:
+                        dot_color = BLACK
+                    elif color_value == 4:
+                        dot_color = PURPLE
+                    else:
+                        throw_error("Invalid color")
 
 
-                pygame.draw.circle(surface, dot_color, (dot_x, dot_y), dot_radius)
+                    pygame.draw.circle(surface, dot_color, (dot_x, dot_y), dot_radius)
 
     async def make_prediction(self,items):
 

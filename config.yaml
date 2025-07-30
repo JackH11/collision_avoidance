@@ -6,4 +6,20 @@ colors:
   green: [0,255,0]
   light_grey: [211,211,211]
   orange: [255,128,0]
+  purple: [128,0,128]
+window:
+  width: 400
+  height: 400
+boundary:
+  width: 150
+  height: 150
+obstacle:
+  count: 5
+  radius: 8
+agent:
+  radius: 8
+  speed: 3
+goal:
+  radius: 6
+  color: [0,255,0]
 

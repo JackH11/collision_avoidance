@@ -3,3 +3,4 @@ venv/
 agents/*
 dqn_tensorboard/*
 checkpoints/*
+__pycache__/*

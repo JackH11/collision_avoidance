@@ -5,8 +5,6 @@ from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback,
 import numpy as np
 from stable_baselines3.common.utils import get_schedule_fn, get_linear_fn
 
-#TODO
-# Add a config file with global parameters
 
 class ActionLoggingCallback(BaseCallback):
     def __init__(self, verbose=0, action_space_size=None):
@@ -84,7 +82,7 @@ action_callback = ActionLoggingCallback(action_space_size=env.action_space.n)
 callbacks = CallbackList([action_callback, checkpoint_callback])
 
 # Train for 100,000 timesteps
-model.learn(total_timesteps=300_000,tb_log_name="dqn",callback=callbacks)
+model.learn(total_timesteps=20_000,tb_log_name="dqn",callback=callbacks)
 
 # Save model
-model.save("dqn_avoidance_agent4")
+model.save("dqn_avoidance_agent5")
