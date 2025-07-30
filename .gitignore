@@ -1,2 +1,5 @@
 venv/
 .DS_Store
+agents/*
+dqn_tensorboard/*
+checkpoints/*
