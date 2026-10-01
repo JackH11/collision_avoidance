@@ -3,10 +3,10 @@
 Evaluate a saved SB3 policy over N episodes.
 
 Prints success / collision / timeout rates plus mean return and distances.
-Intended as the Phase 0 numeric baseline before obs/reward/algorithm changes.
 
 Example:
-  python eval_policy.py --model dqn_avoidance_agent5 --episodes 20 --seed 0
+  python eval_policy.py --model dqn_avoidance_agent5 --episodes 50 --seed 0
+  python eval_policy.py --scenario hard --reward-mode new --episodes 20
 """
 
 from __future__ import annotations
@@ -28,8 +28,14 @@ def evaluate(
     seed: int = 0,
     deterministic: bool = True,
     prediction_backend: str = "simple",
+    scenario: str = "baseline",
+    reward_mode: str = "old",
 ) -> dict:
-    env = MovingAvoidanceEnv(prediction_backend=prediction_backend)
+    env = MovingAvoidanceEnv(
+        prediction_backend=prediction_backend,
+        scenario=scenario,
+        reward_mode=reward_mode,
+    )
     model = DQN.load(model_path)
 
     outcomes = {"success": 0, "collision": 0, "timeout": 0, "other": 0}
@@ -80,6 +86,8 @@ def evaluate(
         "seed": seed,
         "deterministic": deterministic,
         "prediction_backend": prediction_backend,
+        "scenario": scenario,
+        "reward_mode": reward_mode,
         "success_rate": outcomes["success"] / n,
         "collision_rate": outcomes["collision"] / n,
         "timeout_rate": outcomes["timeout"] / n,
@@ -90,6 +98,7 @@ def evaluate(
         "mean_final_goal_dist": float(np.nanmean(goal_dists)),
         "mean_min_obstacle_dist": float(np.mean(min_clearances)),
         "elapsed_sec": elapsed,
+        "sec_per_episode": elapsed / n,
     }
     return summary
 
@@ -111,8 +120,20 @@ def main():
     parser.add_argument(
         "--prediction-backend",
         default="simple",
-        choices=["simple", "nn"],
-        help="Obstacle trajectory predictor (nn requires TensorFlow)",
+        choices=["simple", "nn", "nn_uncertainty"],
+        help="Obstacle trajectory predictor (nn* requires TensorFlow)",
+    )
+    parser.add_argument(
+        "--scenario",
+        default="baseline",
+        choices=["easy", "baseline", "hard"],
+        help="Named scenario from config.yaml",
+    )
+    parser.add_argument(
+        "--reward-mode",
+        default="old",
+        choices=["old", "new"],
+        help="Reward variant (old = baseline-compatible)",
     )
     parser.add_argument(
         "--json-out",
@@ -133,11 +154,15 @@ def main():
         seed=args.seed,
         deterministic=not args.stochastic,
         prediction_backend=args.prediction_backend,
+        scenario=args.scenario,
+        reward_mode=args.reward_mode,
     )
 
     print("=== Policy eval ===")
     print(f"model:              {summary['model']}")
     print(f"episodes:           {summary['episodes']} (seed={summary['seed']})")
+    print(f"scenario:           {summary['scenario']}")
+    print(f"reward_mode:        {summary['reward_mode']}")
     print(f"prediction:         {summary['prediction_backend']}")
     print(f"success_rate:       {summary['success_rate']:.3f}")
     print(f"collision_rate:     {summary['collision_rate']:.3f}")
@@ -147,6 +172,7 @@ def main():
     print(f"mean_final_goal_d:  {summary['mean_final_goal_dist']:.2f}")
     print(f"mean_min_clearance: {summary['mean_min_obstacle_dist']:.2f}")
     print(f"elapsed_sec:        {summary['elapsed_sec']:.1f}")
+    print(f"sec_per_episode:    {summary['sec_per_episode']:.2f}")
     print(f"counts:             {summary['counts']}")
 
     if args.json_out:
