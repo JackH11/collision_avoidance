@@ -1,8 +1,6 @@
 import os, csv
-from tensorflow.keras.models import load_model
 from typing import List, Dict, Union, Optional
 import pandas as pd
-import tensorflow as tf
 
 def get_model(
     model_name: str,
@@ -12,6 +10,8 @@ def get_model(
     """
     Loads a Keras model from the nn/models folder.
 
+    TensorFlow is imported lazily so core train/demo paths can avoid TF.
+
     Args:
         model_name (str): Name of the model (without .keras extension)
         custom_objects (dict, optional): Dictionary of custom objects (e.g. custom losses/layers)
@@ -20,6 +20,8 @@ def get_model(
     Returns:
         tf.keras.Model: The loaded model
     """
+    from tensorflow.keras.models import load_model
+
     cwd = os.path.dirname(os.path.abspath(__file__))
     model_path = os.path.join(cwd, "nn", "models", model_name + ".keras")
 
@@ -27,7 +29,7 @@ def get_model(
     return model
 
 def save_model(
-    model: tf.keras.Model,
+    model,
     model_name: str,
     overwrite: bool = True
 ):

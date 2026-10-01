@@ -1,21 +1,17 @@
-import pygame
-from gym import Env
-import random, uuid
-import math
-import numpy as np
-from numpy.f2py.auxfuncs import throw_error
 import asyncio
 import math
+import random
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+
+import numpy as np
+import pygame
+from gymnasium import Env, spaces
+from numpy.f2py.auxfuncs import throw_error
 
 from config import CONFIG
 from utils import point_in_polygon
-from gym import spaces
-from model_prediction import make_simple_prediction
-
-from concurrent.futures import ThreadPoolExecutor
-from nn.nn import nll_gaussian, ClippedLogVar
-from utils import get_model
-from functools import partial
 
 # Colors
 WHITE = tuple(CONFIG["colors"]["white"])
@@ -27,8 +23,7 @@ LIGHT_GREY = tuple(CONFIG["colors"]["light_grey"])
 ORANGE = tuple(CONFIG["colors"]["orange"])
 PURPLE = tuple(CONFIG["colors"]["purple"])
 
-
-# Screen dimensions
+# Screen / sim dimensions (single source: config.yaml)
 WIDTH = CONFIG["boundary"]["width"]
 HEIGHT = CONFIG["boundary"]["height"]
 WINDOW_WIDTH = CONFIG["window"]["width"]
@@ -36,33 +31,49 @@ WINDOW_HEIGHT = CONFIG["window"]["height"]
 ITEM_RADIUS = CONFIG["obstacle"]["radius"]
 ITEM_COUNT = CONFIG["obstacle"]["count"]
 AGENT_SPEED = CONFIG["agent"]["speed"]
-MAX_STEPS = 1000
+MAX_STEPS = CONFIG.get("episode", {}).get("max_steps", 1000)
 GOAL_RADIUS = CONFIG["goal"]["radius"]
 GOAL_COLOR = tuple(CONFIG["goal"]["color"])
 
 executor = ThreadPoolExecutor(max_workers=4)
 
-model = get_model(
-    "j_10_5",
-    custom_objects={'nll_gaussian': nll_gaussian, 'ClippedLogVar': ClippedLogVar},
-    safe_mode=False
-)
 
-def draw_item_async(item, surface,color=None):
+def resolve_prediction_fn(backend=None):
+    """Return a prediction callable. TF/Keras loads only for the NN backend."""
+    if backend is None:
+        backend = CONFIG.get("prediction", {}).get("backend", "simple")
+    if backend == "simple":
+        from model_prediction import make_simple_prediction
+        return make_simple_prediction
+    if backend in ("nn", "nn_uncertainty"):
+        from model_prediction import make_nn_prediction
+        return make_nn_prediction
+    raise ValueError(
+        f"Unknown prediction backend '{backend}'. Use 'simple' or 'nn'."
+    )
+
+
+def draw_item_async(item, surface, color=None):
     """Asynchronous draw function"""
-
-    item.draw(surface,color)
+    item.draw(surface, color)
     return item
 
 
-
-
 class MovingAvoidanceEnv(Env):
-    def __init__(self, render=False):
-        super(MovingAvoidanceEnv, self).__init__()
-        self.ITEM_COUNT = 5
+    metadata = {"render_modes": ["human"], "render_fps": 120}
 
-        self.observation_space = spaces.Box(low=-1, high=4, shape=(3,30,30), dtype=np.float32)
+    def __init__(self, render_mode=None, prediction_backend=None):
+        super().__init__()
+        self.ITEM_COUNT = ITEM_COUNT
+        self.max_steps = MAX_STEPS
+        self.prediction_backend = prediction_backend or CONFIG.get(
+            "prediction", {}
+        ).get("backend", "simple")
+        self._prediction_fn = resolve_prediction_fn(self.prediction_backend)
+
+        self.observation_space = spaces.Box(
+            low=-1, high=4, shape=(3, 30, 30), dtype=np.float32
+        )
         self.action_space = spaces.Discrete(8)
 
         self.agent = None
@@ -72,110 +83,144 @@ class MovingAvoidanceEnv(Env):
         self.goal_x = None
         self.goal_y = None
         self.resetFood = True
-
+        self.last_action = 0
         self.generate_goal()
 
-        self.render = render
+        self.render_mode = render_mode
 
-        if render:
+        if render_mode == "human":
             pygame.init()
             self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
             self.clock = pygame.time.Clock()
-            self.font = pygame.font.SysFont(None, 30)  # default font, size 30
-            pygame.display.set_caption('2D Moving Items - Prediction Agent')
+            self.font = pygame.font.SysFont(None, 30)
+            pygame.display.set_caption("2D Moving Items - Prediction Agent")
 
+    def _goal_dist(self, x=None, y=None):
+        if x is None:
+            x = self.agent.x
+        if y is None:
+            y = self.agent.y
+        return math.hypot(self.goal_x - x, self.goal_y - y)
 
-    def seed(self, seed=None):
-        from gym.utils import seeding
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
+    def _min_obstacle_dist(self):
+        if not self.obstacles or self.agent is None:
+            return float("inf")
+        return min(
+            math.hypot(obs.x - self.agent.x, obs.y - self.agent.y)
+            for obs in self.obstacles
+        )
+
+    def _base_info(self, collision=False, goal_reached=False, timeout=False):
+        goal_dist = (
+            self._goal_dist()
+            if self.agent is not None and self.goal_x is not None
+            else float("nan")
+        )
+        min_obs = (
+            self._min_obstacle_dist()
+            if self.agent is not None
+            else float("nan")
+        )
+        return {
+            "collision": collision,
+            "goal_reached": goal_reached,
+            "timeout": timeout,
+            "goal_dist": float(goal_dist),
+            "min_obstacle_dist": float(min_obs),
+            "steps": self.steps,
+        }
 
     def generate_goal(self):
-
         self.goal_x = random.randint(GOAL_RADIUS, WIDTH - GOAL_RADIUS)
         self.goal_y = random.randint(GOAL_RADIUS, HEIGHT - GOAL_RADIUS)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
+        super().reset(seed=seed)
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
 
-        self.agent = MovingAgent(make_simple_prediction)
+        self.agent = MovingAgent(self._prediction_fn)
         self.agent.x = WIDTH // 2
         self.agent.y = HEIGHT // 2
         self.agent.vx = 0
         self.agent.vy = 0
+        # History must match the reset pose (MovingItem.__init__ samples randomly).
+        self.agent.xs = [self.agent.x]
+        self.agent.ys = [self.agent.y]
+        self.agent.vxs = [self.agent.vx]
+        self.agent.vys = [self.agent.vy]
 
         self.obstacles = []
         for _ in range(self.ITEM_COUNT):
             item = MovingItem(add_noise=True)
             self.obstacles.append(item)
 
-        self.goal_x = random.randint(GOAL_RADIUS, WIDTH - GOAL_RADIUS)
-        self.goal_y = random.randint(GOAL_RADIUS, HEIGHT - GOAL_RADIUS)
-
+        self.generate_goal()
         self.steps = 0
-        return self._get_obs()
+        self.last_action = 0
+
+        obs = self._get_obs()
+        return obs, self._base_info()
 
     def calculate_goal_distance(self, x, y):
-
         x_dist = abs(self.goal_x - x)
         y_dist = abs(self.goal_y - y)
-        dist = math.hypot(x_dist, y_dist)
-
-        return dist
+        return math.hypot(x_dist, y_dist)
 
     def calculate_goal_change_distance(self, agent):
         """
-        Calculates the change in distance between the agent and the goal between this step and the last
+        Change in distance between the agent and the goal between this step
+        and the last.
         """
         if len(agent.xs) < 2:
             return 0
 
         d1 = self.calculate_goal_distance(agent.xs[-1], agent.ys[-1])
         d2 = self.calculate_goal_distance(agent.xs[-2], agent.ys[-2])
-        distance_change = d1 - d2
-        return distance_change
-
+        return d1 - d2
 
     def step(self, action):
         self.steps += 1
+        self.last_action = int(action)
 
-        # Convert action to velocity
         dx, dy = self._action_to_velocity(action)
         self.agent.vx = dx
         self.agent.vy = dy
 
-        # Update agent
         self.agent.update()
 
-        # Update obstacles
         for obs in self.obstacles:
             obs.update()
 
-        done = self.steps >= MAX_STEPS
+        timeout = self.steps >= self.max_steps
+        goal_dist = self._goal_dist()
+        min_obs_dist = self._min_obstacle_dist()
 
-        dist = math.hypot(self.goal_x - self.agent.x, self.goal_y - self.agent.y)
-        if dist < GOAL_RADIUS + ITEM_RADIUS:
-            done = True
-            return self._get_obs(), 100, True, {}
+        # Goal reached
+        if goal_dist < GOAL_RADIUS + ITEM_RADIUS:
+            info = self._base_info(goal_reached=True)
+            return self._get_obs(), 100.0, True, False, info
 
-        for obs in self.obstacles:
-            dist = math.hypot(obs.x - self.agent.x, obs.y - self.agent.y)
-            if dist < ITEM_RADIUS * 2:
-                done = True
-                return self._get_obs(), -50, done, {}
-
+        # Collision
+        if min_obs_dist < ITEM_RADIUS * 2:
+            info = self._base_info(collision=True)
+            return self._get_obs(), -50.0, True, False, info
 
         distance_change = self.calculate_goal_change_distance(self.agent)
-
-        return self._get_obs(), distance_change - 5, done, {}
-
+        reward = distance_change - 5
+        terminated = False
+        truncated = timeout
+        info = self._base_info(timeout=timeout)
+        return self._get_obs(), reward, terminated, truncated, info
 
     def render(self):
+        if self.render_mode != "human":
+            return
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
-
-
+                pass
 
         self.screen.fill(WHITE)
 
@@ -190,20 +235,22 @@ class MovingAvoidanceEnv(Env):
         reward = self.get_reward(self.agent)
         text_surface = self.font.render(f"Reward: {reward}", True, BLACK)
         text_rect = text_surface.get_rect()
-        text_rect.topright = (WIDTH - 10, 10)  # 10 px padding from the top-right corner
+        text_rect.topright = (WIDTH - 10, 10)
         self.screen.blit(text_surface, text_rect)
 
-        self.draw_arrow_from_base(self.screen, BLACK, self.agent.x, self.agent.y, self.action)
-        self.draw(self.screen, self, self.obstacles, uncertainty_predictions, True)
+        self.draw_arrow_from_base(
+            self.screen, BLACK, self.agent.x, self.agent.y, self.last_action
+        )
+        self.agent.draw(
+            self.screen, self, self.obstacles, uncertainty_predictions, True
+        )
 
         self.draw_goal(self.screen)
 
         pygame.display.flip()
         self.clock.tick(120)
 
-
     def get_reward(self, agent):
-
         dist = math.hypot(self.goal_x - agent.x, self.goal_y - agent.y)
         if dist < GOAL_RADIUS + ITEM_RADIUS:
             return 100
@@ -214,19 +261,14 @@ class MovingAvoidanceEnv(Env):
                 return -50
 
         distance_change = self.calculate_goal_change_distance(agent)
-
         return distance_change - 5
 
-
     def _get_obs(self):
-
-        obs = self.agent.get_observation(self.obstacles, self)
-
-        return obs
+        return self.agent.get_observation(self.obstacles, self)
 
     def _action_to_angle(self, action):
         angles = [0, 45, 90, 135, 180, 225, 270, 315]
-        return math.radians(angles[action])
+        return math.radians(angles[int(action)])
 
     def _action_to_velocity(self, action):
         angle_rad = self._action_to_angle(action)
@@ -235,85 +277,139 @@ class MovingAvoidanceEnv(Env):
     def draw_goal(self, surface):
         if not self.goal_x or not self.goal_y:
             self.generate_goal()
-        pygame.draw.circle(surface, GOAL_COLOR, (WINDOW_WIDTH/2 - WIDTH/2 + self.goal_x, WINDOW_HEIGHT/2 - HEIGHT/2 + self.goal_y), GOAL_RADIUS)
+        pygame.draw.circle(
+            surface,
+            GOAL_COLOR,
+            (
+                WINDOW_WIDTH / 2 - WIDTH / 2 + self.goal_x,
+                WINDOW_HEIGHT / 2 - HEIGHT / 2 + self.goal_y,
+            ),
+            GOAL_RADIUS,
+        )
 
     def draw_predictions(self, surface, items, predictions):
-
-        # Draw all predictions at once
-        for i, (item, (pred_x, pred_y, std_x, std_y)) in enumerate(zip(items, predictions)):
+        for i, (item, (pred_x, pred_y, std_x, std_y)) in enumerate(
+            zip(items, predictions)
+        ):
             prediction_color = GREEN if item.add_noise else RED
-            # Draw anti-aliased prediction circles
-            pygame.draw.circle(surface, prediction_color, (WINDOW_WIDTH/2 - WIDTH/2 + int(pred_x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(pred_y)), 5, 0)
-            pygame.draw.circle(surface, BLACK, (WINDOW_WIDTH/2 - WIDTH/2 + int(pred_x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(pred_y)), 5, 1)
-            # Draw anti-aliased lines
-            pygame.draw.line(surface, BLACK, (WINDOW_WIDTH/2 - WIDTH/2 + int(item.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(item.y)), (WINDOW_WIDTH/2 - WIDTH/2 + int(pred_x), int(WINDOW_HEIGHT/2 - HEIGHT/2 + pred_y)), 2)
+            pygame.draw.circle(
+                surface,
+                prediction_color,
+                (
+                    WINDOW_WIDTH / 2 - WIDTH / 2 + int(pred_x),
+                    WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(pred_y),
+                ),
+                5,
+                0,
+            )
+            pygame.draw.circle(
+                surface,
+                BLACK,
+                (
+                    WINDOW_WIDTH / 2 - WIDTH / 2 + int(pred_x),
+                    WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(pred_y),
+                ),
+                5,
+                1,
+            )
+            pygame.draw.line(
+                surface,
+                BLACK,
+                (
+                    WINDOW_WIDTH / 2 - WIDTH / 2 + int(item.x),
+                    WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(item.y),
+                ),
+                (
+                    WINDOW_WIDTH / 2 - WIDTH / 2 + int(pred_x),
+                    int(WINDOW_HEIGHT / 2 - HEIGHT / 2 + pred_y),
+                ),
+                2,
+            )
 
-            # Calculate angle between current position and prediction
             dx = pred_x - item.x
             dy = pred_y - item.y
             angle = math.atan2(dy, dx)
 
-            # Calculate variance-based angle spread (inverse relationship)
-            # Higher variance = smaller angle spread
             total_variance = std_x + std_y
-            max_angle_spread = math.pi / 2  # 90 degrees total (45 degrees each side)
-            angle_spread = max_angle_spread / (1 + total_variance)  # Inverse relationship
+            max_angle_spread = math.pi / 2
+            angle_spread = max_angle_spread / (1 + total_variance)
 
-            # Draw pie slice
-            points = [(WINDOW_WIDTH/2 - WIDTH/2 + int(item.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(item.y))]  # Start at current position
+            points = [
+                (
+                    WINDOW_WIDTH / 2 - WIDTH / 2 + int(item.x),
+                    WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(item.y),
+                )
+            ]
 
-            # Add arc points
             steps = 20
             for i in range(steps + 1):
                 current_angle = angle - angle_spread + (2 * angle_spread * i / steps)
-                radius = math.sqrt(dx ** 2 + dy ** 2)  # Distance to prediction point
+                radius = math.sqrt(dx ** 2 + dy ** 2)
                 x = item.x + radius * math.cos(current_angle)
                 y = item.y + radius * math.sin(current_angle)
-                points.append((WINDOW_WIDTH/2 - WIDTH/2 + int(x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(y)))
+                points.append(
+                    (
+                        WINDOW_WIDTH / 2 - WIDTH / 2 + int(x),
+                        WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(y),
+                    )
+                )
 
-            points.append((WINDOW_WIDTH/2 - WIDTH/2 + int(item.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(item.y)))  # Close the polygon
+            points.append(
+                (
+                    WINDOW_WIDTH / 2 - WIDTH / 2 + int(item.x),
+                    WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(item.y),
+                )
+            )
 
-            # Draw filled polygon with semi-transparency
-            #surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            pygame.draw.polygon(surface, (128, 128, 128, 64), points)  # Light gray, semi-transparent
+            pygame.draw.polygon(surface, (128, 128, 128, 64), points)
             surface.blit(surface, (0, 0))
+            pygame.draw.polygon(surface, (128, 128, 128), points, 1)
 
-            # Draw outline
-            pygame.draw.polygon(surface, (128, 128, 128), points, 1)  # Solid gray outline
-
-    def draw_arrow_from_base(self, surface, color, base_x, base_y, action, length=20, arrowhead_length=6,
-                             arrowhead_angle=30, width=2):
-        # Convert angle to radians
-
-        base_x = WINDOW_WIDTH/2 - WIDTH/2 + base_x
-        base_y = WINDOW_HEIGHT/2 - HEIGHT/2 + base_y
+    def draw_arrow_from_base(
+        self,
+        surface,
+        color,
+        base_x,
+        base_y,
+        action,
+        length=20,
+        arrowhead_length=6,
+        arrowhead_angle=30,
+        width=2,
+    ):
+        base_x = WINDOW_WIDTH / 2 - WIDTH / 2 + base_x
+        base_y = WINDOW_HEIGHT / 2 - HEIGHT / 2 + base_y
 
         angle_rad = self._action_to_angle(action)
 
-        # Calculate the end of the arrow shaft
         end_x = base_x + length * math.cos(angle_rad)
         end_y = base_y + length * math.sin(angle_rad)
 
-        # Draw the shaft
-        pygame.draw.line(surface, color, (base_x, base_y), (end_x,end_y), width)
+        pygame.draw.line(surface, color, (base_x, base_y), (end_x, end_y), width)
 
-        # Calculate the two arrowhead points
         left_angle = angle_rad + math.radians(180 - arrowhead_angle)
         right_angle = angle_rad - math.radians(180 - arrowhead_angle)
 
-        left = (end_x + arrowhead_length * math.cos(left_angle),
-                end_y + arrowhead_length * math.sin(left_angle))
-        right = (end_x + arrowhead_length * math.cos(right_angle),
-                 end_y + arrowhead_length * math.sin(right_angle))
+        left = (
+            end_x + arrowhead_length * math.cos(left_angle),
+            end_y + arrowhead_length * math.sin(left_angle),
+        )
+        right = (
+            end_x + arrowhead_length * math.cos(right_angle),
+            end_y + arrowhead_length * math.sin(right_angle),
+        )
 
-        # Draw the arrowhead as a filled triangle
         pygame.draw.polygon(surface, color, [(end_x, end_y), left, right])
 
-class MovingItem:
+    def close(self):
+        if getattr(self, "screen", None) is not None:
+            pygame.display.quit()
+            pygame.quit()
+            self.screen = None
 
+
+class MovingItem:
     def __init__(self, add_noise=False):
-        
-        # kinematics
         self.id = str(uuid.uuid4())
         self.x = random.randint(ITEM_RADIUS, WIDTH - ITEM_RADIUS)
         self.y = random.randint(ITEM_RADIUS, HEIGHT - ITEM_RADIUS)
@@ -323,20 +419,17 @@ class MovingItem:
         self.vy = math.sin(angle) * speed
         self.MAX_SPEED = 6
 
-        # noise
         self.add_noise = add_noise
         self.noise_timer = 0
-        self.noise_angle = random.uniform(0, 2*math.pi)
+        self.noise_angle = random.uniform(0, 2 * math.pi)
         self.noise_delta = random.uniform(-0.05, 0.05)
 
-        # history
         self.xs: list[float] = [self.x]
         self.ys: list[float] = [self.y]
         self.vxs: list[float] = [self.vx]
         self.vys: list[float] = [self.vy]
 
     def update(self):
-        # Add noise to velocity if enabled
         if self.add_noise:
             self.noise_timer += 1
 
@@ -349,21 +442,17 @@ class MovingItem:
             self.vx += math.cos(self.noise_angle) * base_noise_mag
             self.vy += math.sin(self.noise_angle) * base_noise_mag
 
-
-            # occasional larger jitter every so often
             if self.noise_timer % 90 == 0:
                 jitter_angle = random.uniform(0, 2 * math.pi)
                 jitter_mag = random.uniform(0.8, 2.0)
                 self.vx += math.cos(jitter_angle) * jitter_mag
                 self.vy += math.sin(jitter_angle) * jitter_mag
 
-            # apply a slight damping so speed doesn't explode over time
             damping = 0.98
             self.vx *= damping
             self.vy *= damping
 
-            # cap maximum speed
-            speed = math.sqrt(self.vx**2 + self.vy**2)
+            speed = math.sqrt(self.vx ** 2 + self.vy ** 2)
             if speed > self.MAX_SPEED:
                 self.vx = (self.vx / speed) * self.MAX_SPEED
                 self.vy = (self.vy / speed) * self.MAX_SPEED
@@ -371,7 +460,6 @@ class MovingItem:
         new_x = self.x + self.vx
         new_y = self.y + self.vy
 
-        # Bounce off walls
         if new_x < ITEM_RADIUS or new_x > WIDTH - ITEM_RADIUS:
             self.vx *= -1
         if new_y < ITEM_RADIUS or new_y > HEIGHT - ITEM_RADIUS:
@@ -379,7 +467,7 @@ class MovingItem:
 
         self.x += self.vx
         self.y += self.vy
-        
+
         self.xs.append(self.x)
         self.ys.append(self.y)
         self.vxs.append(self.vx)
@@ -390,51 +478,63 @@ class MovingItem:
 
         if color is not None:
             color = color
-        # Use anti-aliased circle for smoother appearance
-        pygame.draw.circle(surface, color, (WINDOW_WIDTH/2 - WIDTH/2 + int(self.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y)), ITEM_RADIUS, 0)
-        # Add a subtle outline for better definition
-        pygame.draw.circle(surface, BLACK, (WINDOW_WIDTH/2 - WIDTH/2 + int(self.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y)), ITEM_RADIUS, 1)
+        pygame.draw.circle(
+            surface,
+            color,
+            (
+                WINDOW_WIDTH / 2 - WIDTH / 2 + int(self.x),
+                WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(self.y),
+            ),
+            ITEM_RADIUS,
+            0,
+        )
+        pygame.draw.circle(
+            surface,
+            BLACK,
+            (
+                WINDOW_WIDTH / 2 - WIDTH / 2 + int(self.x),
+                WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(self.y),
+            ),
+            ITEM_RADIUS,
+            1,
+        )
 
     def get_position(self):
         return self.x, self.y
 
-    def get_history(self, lag=5,window=10):
-        # Get the last 'lag' values for each feature
+    def get_history(self, lag=5, window=10):
         x_history = self.xs[-window:]
         y_history = self.ys[-window:]
         vx_history = self.vxs[-window:]
         vy_history = self.vys[-window:]
-        
-        # Pad with zeros if we don't have enough history
+
         while len(x_history) < window:
             x_history.insert(0, 0.0)
             y_history.insert(0, 0.0)
             vx_history.insert(0, 0.0)
             vy_history.insert(0, 0.0)
-        
-        # Flatten into the format: [x_lag_1, y_lag_1, vx_lag_1, vy_lag_1, x_lag_2, y_lag_2, ...]
+
         features = []
-        for i in range(window-1,-1,-1):
-            features.extend([x_history[i], y_history[i], vx_history[i], vy_history[i]])
-        
+        for i in range(window - 1, -1, -1):
+            features.extend(
+                [x_history[i], y_history[i], vx_history[i], vy_history[i]]
+            )
+
         return features
 
     def get_normalize_velocity(self):
-
         return self.vx / self.MAX_SPEED, self.vy / self.MAX_SPEED
+
 
 class MovingAgent(MovingItem):
     def __init__(self, prediction_model, add_noise=False):
         super().__init__(add_noise=add_noise)
-
         self.prediction_model = prediction_model
-
 
     def get_state(self):
         return [self.x, self.y, self.vx, self.vy]
 
     def get_observation(self, items, env):
-
         predictions = self.make_predictions(items)
 
         dot_radius = 2
@@ -466,22 +566,22 @@ class MovingAgent(MovingItem):
                     cell_vx = 0
 
                 if not cell_value == 3:
-                    for i,item in enumerate(items):  # a list of objects with .x and .y
+                    for i, item in enumerate(items):
                         dist_sq = (dot_x - item.x) ** 2 + (dot_y - item.y) ** 2
 
                         if dist_sq < (dot_radius + ITEM_RADIUS) ** 2:
                             cell_value = 2
                             cell_vx, cell_vy = item.get_normalize_velocity()
-                            break  # no need to check further
+                            break
 
                         goal_dist = env.calculate_goal_distance(dot_x, dot_y)
 
                         if goal_dist < (dot_radius + GOAL_RADIUS):
                             cell_value = 4
-                            cell_vx, cell_vy = 0,0
+                            cell_vx, cell_vy = 0, 0
                             break
 
-                        points = [(int(item.x), int(item.y))]  # Start at current position
+                        points = [(int(item.x), int(item.y))]
 
                         pred_x, pred_y, std_x, std_y = predictions[i]
                         dx1 = pred_x - item.x
@@ -493,14 +593,18 @@ class MovingAgent(MovingItem):
                         angle_spread = max_angle_spread / (1 + total_variance)
 
                         steps = 20
-                        for i in range(steps + 1):
-                            current_angle = angle - angle_spread + (2 * angle_spread * i / steps)
-                            radius = math.sqrt(dx1 ** 2 + dy1 ** 2)  # Distance to prediction point
+                        for si in range(steps + 1):
+                            current_angle = (
+                                angle
+                                - angle_spread
+                                + (2 * angle_spread * si / steps)
+                            )
+                            radius = math.sqrt(dx1 ** 2 + dy1 ** 2)
                             x = item.x + radius * math.cos(current_angle)
                             y = item.y + radius * math.sin(current_angle)
                             points.append((int(x), int(y)))
 
-                        points.append((int(item.x), int(item.y)))  # Close the polygon
+                        points.append((int(item.x), int(item.y)))
 
                         if point_in_polygon(dot_x, dot_y, points):
                             cell_value = 1
@@ -512,23 +616,35 @@ class MovingAgent(MovingItem):
                 vx[dx + half_count, dy + half_count] = cell_vx
                 vy[dx + half_count, dy + half_count] = cell_vy
 
-        obs = np.stack([pos, vx, vy], axis=0)
+        return np.stack([pos, vx, vy], axis=0)
 
-        return obs
-
-    def draw(self, surface,env, items=None,predictions=None, dots=False):
+    def draw(self, surface, env, items=None, predictions=None, dots=False):
         color = LIGHT_GREY
-        # Use anti-aliased circle for smoother appearance
-        pygame.draw.circle(surface, color, (WINDOW_WIDTH/2 - WIDTH/2 + int(self.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y)), ITEM_RADIUS, 0)
-        # Add a subtle outline for better definition
-        pygame.draw.circle(surface, BLACK, (WINDOW_WIDTH/2 - WIDTH/2 + int(self.x), WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y)), ITEM_RADIUS, 1)
+        pygame.draw.circle(
+            surface,
+            color,
+            (
+                WINDOW_WIDTH / 2 - WIDTH / 2 + int(self.x),
+                WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(self.y),
+            ),
+            ITEM_RADIUS,
+            0,
+        )
+        pygame.draw.circle(
+            surface,
+            BLACK,
+            (
+                WINDOW_WIDTH / 2 - WIDTH / 2 + int(self.x),
+                WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(self.y),
+            ),
+            ITEM_RADIUS,
+            1,
+        )
 
-        # --- Add red dots in a 10x10 square around the item ---
-        dot_color = BLUE  # red
-        dot_radius = 2  # radius of each dot
-        spacing = 5  # distance between dots in pixels
-        half_count = 15  # 10x10 square means 5 dots in each direction from center
-
+        dot_color = BLUE
+        dot_radius = 2
+        spacing = 5
+        half_count = 15
 
         if not items or not predictions:
             return
@@ -538,8 +654,12 @@ class MovingAgent(MovingItem):
 
             for dx in range(-half_count, half_count):
                 for dy in range(-half_count, half_count):
-                    dot_x = WINDOW_WIDTH/2 - WIDTH/2 + int(self.x + dx * spacing)
-                    dot_y = WINDOW_HEIGHT/2 - HEIGHT/2 + int(self.y + dy * spacing)
+                    dot_x = WINDOW_WIDTH / 2 - WIDTH / 2 + int(
+                        self.x + dx * spacing
+                    )
+                    dot_y = WINDOW_HEIGHT / 2 - HEIGHT / 2 + int(
+                        self.y + dy * spacing
+                    )
 
                     color_value = grid[dx + half_count, dy + half_count]
                     if color_value == 0:
@@ -555,19 +675,11 @@ class MovingAgent(MovingItem):
                     else:
                         throw_error("Invalid color")
 
-
                     pygame.draw.circle(surface, dot_color, (dot_x, dot_y), dot_radius)
 
-    async def make_prediction(self,items):
-
-        tasks = [asyncio.to_thread(self.prediction_model,item) for item in items]
+    async def make_prediction(self, items):
+        tasks = [asyncio.to_thread(self.prediction_model, item) for item in items]
         return await asyncio.gather(*tasks)
 
-    def make_predictions(self,items):
-
+    def make_predictions(self, items):
         return asyncio.run(self.make_prediction(items))
-
-
-
-
-

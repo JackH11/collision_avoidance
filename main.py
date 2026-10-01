@@ -2,17 +2,13 @@ import pygame
 import sys
 import uuid
 
-from utils import get_model, save_data, get_data
-from model_prediction import agent_uncertain_predict, update_item_async, make_nn_prediction, make_simple_prediction
-from gym_env import MovingItem, MovingAgent
-import numpy as np
+from utils import save_data
+from model_prediction import update_item_async, make_simple_prediction
+from gym_env import MovingItem, MovingAgent, MovingAvoidanceEnv, draw_item_async
 from config import CONFIG
 from stable_baselines3 import DQN
 from concurrent.futures import ThreadPoolExecutor
-from gym_env import MovingAvoidanceEnv
 from functools import partial
-
-
 
 
 data = []
@@ -25,7 +21,7 @@ WIDTH = CONFIG["window"]["width"]
 HEIGHT = CONFIG["window"]["height"]
 ITEM_RADIUS = CONFIG["obstacle"]["radius"]
 ITEM_COUNT = CONFIG["obstacle"]["count"]
-MAX_STEPS = 1000
+MAX_STEPS = CONFIG.get("episode", {}).get("max_steps", 1000)
 AGENT_SPEED = CONFIG["agent"]["speed"]
 
 WHITE = tuple(CONFIG["colors"]["white"])
