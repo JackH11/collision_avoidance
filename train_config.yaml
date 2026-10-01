@@ -1,0 +1,72 @@
+# Phase 2 training defaults (Option A: grid + CNN + PPO / QR-DQN).
+# Override via CLI flags on train.py.
+
+# Primary run identity
+algo: ppo                 # ppo | qrdqn | dqn (dqn+mlp ablation only)
+policy: CnnPolicy         # CnnPolicy (primary) | MlpPolicy (ablation)
+seed: 0
+run_name: null            # null → auto: {algo}_{policy}_{scenario}_s{seed}
+
+# Environment
+scenario: easy            # easy | baseline | hard — curriculum start at easy
+reward_mode: new          # prefer new shaping for learning; eval vs old separately
+prediction_backend: simple
+n_envs: 8                 # multi-env now that obs is fast (Phase 1)
+
+# Training budget
+total_timesteps: 400000
+# EvalCallback / checkpoints
+eval_freq: 10000          # in timesteps (divided by n_envs internally by SB3)
+n_eval_episodes: 10
+checkpoint_freq: 50000
+deterministic_eval: true
+
+# Artifact roots (gitignored — see .gitignore / README)
+log_dir: ./runs
+checkpoint_dir: ./checkpoints
+best_model_dir: ./models
+tensorboard_dir: ./tb_logs
+
+# CNN feature extractor
+features_dim: 128
+
+# --- PPO hyperparameters ---
+ppo:
+  learning_rate: 3.0e-4
+  n_steps: 1024
+  batch_size: 256
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+
+# --- QR-DQN hyperparameters (sb3-contrib) ---
+qrdqn:
+  learning_rate: 5.0e-4
+  buffer_size: 100000
+  learning_starts: 5000
+  batch_size: 64
+  gamma: 0.99
+  train_freq: 4
+  gradient_steps: 1
+  target_update_interval: 1000
+  exploration_fraction: 0.3
+  exploration_initial_eps: 1.0
+  exploration_final_eps: 0.05
+  n_quantiles: 200
+
+# --- Vanilla DQN + MlpPolicy ablation (baseline-era reference only) ---
+dqn:
+  learning_rate: 1.0e-3
+  buffer_size: 100000
+  learning_starts: 1000
+  batch_size: 64
+  gamma: 0.99
+  train_freq: 4
+  target_update_interval: 100
+  exploration_fraction: 0.5
+  exploration_initial_eps: 1.0
+  exploration_final_eps: 0.05

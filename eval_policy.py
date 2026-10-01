@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Evaluate a saved SB3 policy over N episodes.
+Evaluate a saved SB3 / sb3-contrib policy over N episodes.
 
-Prints success / collision / timeout rates plus mean return and distances.
+Supports DQN (legacy), PPO, and QR-DQN checkpoints via ``model_loader``.
 
-Example:
+Examples:
   python eval_policy.py --model dqn_avoidance_agent5 --episodes 50 --seed 0
-  python eval_policy.py --scenario hard --reward-mode new --episodes 20
+  python eval_policy.py --model models/ppo_CnnPolicy_easy_s0/best_model.zip \\
+      --algo ppo --scenario baseline --episodes 50
+  python eval_policy.py --scenario hard --reward-mode old --episodes 20
 """
 
 from __future__ import annotations
@@ -17,9 +19,9 @@ import time
 from pathlib import Path
 
 import numpy as np
-from stable_baselines3 import DQN
 
 from gym_env import MovingAvoidanceEnv
+from model_loader import load_model
 
 
 def evaluate(
@@ -30,13 +32,14 @@ def evaluate(
     prediction_backend: str = "simple",
     scenario: str = "baseline",
     reward_mode: str = "old",
+    algo: str | None = None,
 ) -> dict:
     env = MovingAvoidanceEnv(
         prediction_backend=prediction_backend,
         scenario=scenario,
         reward_mode=reward_mode,
     )
-    model = DQN.load(model_path)
+    model, algo_name, resolved = load_model(model_path, algo=algo)
 
     outcomes = {"success": 0, "collision": 0, "timeout": 0, "other": 0}
     returns = []
@@ -54,7 +57,7 @@ def evaluate(
 
         while not done:
             action, _ = model.predict(obs, deterministic=deterministic)
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(int(action))
             ep_return += float(reward)
             ep_min_clearance = min(
                 ep_min_clearance, float(info.get("min_obstacle_dist", ep_min_clearance))
@@ -81,7 +84,8 @@ def evaluate(
     n = float(episodes)
 
     summary = {
-        "model": str(model_path),
+        "model": str(resolved),
+        "algo": algo_name,
         "episodes": episodes,
         "seed": seed,
         "deterministic": deterministic,
@@ -109,6 +113,12 @@ def main():
         "--model",
         default="dqn_avoidance_agent5",
         help="Path to SB3 zip (with or without .zip)",
+    )
+    parser.add_argument(
+        "--algo",
+        default=None,
+        choices=["ppo", "qrdqn", "dqn"],
+        help="Algorithm hint (auto-detected from filename when omitted)",
     )
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--seed", type=int, default=0)
@@ -142,24 +152,20 @@ def main():
     )
     args = parser.parse_args()
 
-    model_path = args.model
-    if not model_path.endswith(".zip") and not Path(model_path).exists():
-        candidate = Path(f"{model_path}.zip")
-        if candidate.exists():
-            model_path = str(candidate)
-
     summary = evaluate(
-        model_path=model_path,
+        model_path=args.model,
         episodes=args.episodes,
         seed=args.seed,
         deterministic=not args.stochastic,
         prediction_backend=args.prediction_backend,
         scenario=args.scenario,
         reward_mode=args.reward_mode,
+        algo=args.algo,
     )
 
     print("=== Policy eval ===")
     print(f"model:              {summary['model']}")
+    print(f"algo:               {summary['algo']}")
     print(f"episodes:           {summary['episodes']} (seed={summary['seed']})")
     print(f"scenario:           {summary['scenario']}")
     print(f"reward_mode:        {summary['reward_mode']}")
