@@ -26,7 +26,8 @@ from model_prediction import make_simple_prediction, update_item_async
 from utils import save_data
 
 DEFAULT_MODEL_CANDIDATES = [
-    "models/best_model.zip",  # convenience symlink/copy if created
+    # Prefer Phase 2 CNN checkpoints when present locally (gitignored).
+    "models/ppo_CnnPolicy_easy_s0/final_model.zip",
     "models/ppo_CnnPolicy_easy_s0/best_model.zip",
     "models/qrdqn_CnnPolicy_easy_s0/best_model.zip",
     "dqn_avoidance_agent5.zip",

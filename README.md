@@ -112,11 +112,15 @@ Auto-detects DQN / PPO / QR-DQN from the zip (or pass `--algo`):
 python eval_policy.py --model dqn_avoidance_agent5 --episodes 50 --seed 0
 
 # Phase 2 CNN checkpoint
-python eval_policy.py --model models/ppo_CnnPolicy_easy_s0/best_model.zip \
+python eval_policy.py --model models/ppo_CnnPolicy_easy_s0/final_model.zip \
   --algo ppo --scenario baseline --reward-mode old --episodes 50 --seed 0
 
 python eval_policy.py --scenario hard --reward-mode old --episodes 20
 ```
+
+Phase 2 CPU comparison table (N=50, seed=0, `baseline`/`old`, simple predictor)
+is checked in under [`evals/COMPARISON.md`](evals/COMPARISON.md): legacy DQN
+~2% success vs PPO final / QR-DQN best ~48% success.
 
 ## Demo
 
