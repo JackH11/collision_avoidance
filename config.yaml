@@ -1,32 +1,94 @@
+# Active scenario name (easy | baseline | hard). Defaults match historical baseline.
+scenario: baseline
+
 colors:
   white: [255, 255, 255]
-  black: [0,0,0]
-  red: [255,0,0]
-  blue: [0,0,255]
-  green: [0,255,0]
-  light_grey: [211,211,211]
-  orange: [255,128,0]
-  purple: [128,0,128]
+  black: [0, 0, 0]
+  red: [255, 0, 0]
+  blue: [0, 0, 255]
+  green: [0, 255, 0]
+  light_grey: [211, 211, 211]
+  orange: [255, 128, 0]
+  purple: [128, 0, 128]
+
 window:
   width: 400
   height: 400
+
 boundary:
   width: 150
   height: 150
+
+# Defaults (overridden by the selected scenario below).
 obstacle:
   count: 5
   radius: 8
+  speed_min: 2.0
+  speed_max: 4.0
+  max_speed: 6.0
+  noise: true
+  noise_scale: 1.0
+
 agent:
   radius: 8
   speed: 3
+
 goal:
   radius: 6
-  color: [0,255,0]
+  color: [0, 255, 0]
+  # fixed | random (Phase 1: random only; fixed reserved)
+  placement: random
+
 episode:
   max_steps: 1000
+
+# Reward A/B. Keep "old" as default so baseline agents stay comparable.
+reward:
+  mode: old  # old | new
+  # Used when mode: new
+  progress_scale: 1.0
+  step_cost: 0.1
+  near_miss_dist: 24.0
+  near_miss_penalty: 0.5
+
 prediction:
   # simple = constant-velocity cones (default; no TensorFlow)
-  # nn = Keras uncertainty model (requires requirements-predict.txt)
+  # nn_uncertainty = Keras NLL model (requires requirements-predict.txt)
+  # "nn" is accepted as an alias of nn_uncertainty
   backend: simple
   model_name: j_10_5
+  lag: 10
+  window: 5
+  # Simple predictor horizon (steps of constant velocity)
+  simple_horizon: 8
 
+# Named scenarios: obstacle count/speed/noise, episode length, etc.
+scenarios:
+  easy:
+    obstacle:
+      count: 3
+      speed_min: 1.0
+      speed_max: 2.5
+      noise: false
+      noise_scale: 0.0
+    episode:
+      max_steps: 1200
+  baseline:
+    obstacle:
+      count: 5
+      speed_min: 2.0
+      speed_max: 4.0
+      noise: true
+      noise_scale: 1.0
+    episode:
+      max_steps: 1000
+  hard:
+    obstacle:
+      count: 8
+      speed_min: 3.0
+      speed_max: 5.0
+      max_speed: 7.0
+      noise: true
+      noise_scale: 1.5
+    episode:
+      max_steps: 600
