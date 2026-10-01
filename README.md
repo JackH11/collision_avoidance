@@ -120,7 +120,9 @@ python eval_policy.py --scenario hard --reward-mode old --episodes 20
 
 Phase 2 CPU comparison table (N=50, seed=0, `baseline`/`old`, simple predictor)
 is checked in under [`evals/COMPARISON.md`](evals/COMPARISON.md): legacy DQN
-~2% success vs PPO final / QR-DQN best ~48% success.
+~2% success vs continued QR-DQN CNN **~74%** success / **~26%** collision
+(PPO cont ~60%). Demo prefers `models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip`
+when present.
 
 ## Demo
 

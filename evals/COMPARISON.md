@@ -1,27 +1,31 @@
-# Phase 2 eval comparison (N=50 unless noted, seed=0, simple predictor)
+# Phase 2 eval comparison (seed=0, simple predictor)
 
 Trained on CPU (`torch` no CUDA). Models live under `models/` (gitignored);
 reproduce with `train.py` then re-run these commands.
 
-## Headline vs legacy DQN (`baseline` scenario, `reward.mode=old`)
+## Headline vs legacy DQN (`baseline` scenario, `reward.mode=old`, N=50)
 
-| Model | Success | Collision | Timeout | Mean return | Mean ep len |
-|-------|---------|-----------|---------|-------------|-------------|
-| `dqn_avoidance_agent5` (DQN+MLP, legacy) | **0.020** | **0.980** | 0.000 | -457.1 | 86.8 |
-| `ppo_CnnPolicy_easy_s0/best_model` | 0.340 | 0.660 | 0.000 | -79.5 | 13.5 |
-| `ppo_CnnPolicy_easy_s0/final_model` | **0.480** | **0.520** | 0.000 | -118.0 | 25.8 |
-| `qrdqn_CnnPolicy_easy_s0/best_model` | **0.480** | **0.520** | 0.000 | -60.6 | 12.6 |
+| Model | Steps (approx) | Success | Collision | Timeout | Mean return |
+|-------|----------------|---------|-----------|---------|-------------|
+| `dqn_avoidance_agent5` (DQN+MLP, legacy) | ~20k | **0.020** | **0.980** | 0.000 | -457.1 |
+| PPO CNN `final` (first run) | 400k | 0.480 | 0.520 | 0.000 | -118.0 |
+| QR-DQN CNN `best` (first run) | ≤300k | 0.480 | 0.520 | 0.000 | -60.6 |
+| PPO CNN cont `final`/`best` | ~800k | 0.600 | 0.400 | 0.000 | ~-90 |
+| **QR-DQN CNN cont `best`** | **~330k** | **0.740** | **0.260** | 0.000 | -133.3 |
+| QR-DQN CNN cont `final` | ~330k | 0.700 | 0.300 | 0.000 | -147.1 |
 
-## Train-condition check (`easy`, `reward.mode=new`)
+**Current recommended demo / checkpoint:** `models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip`
 
-| Model | Success | Collision | Timeout | Mean return |
-|-------|---------|-----------|---------|-------------|
-| PPO best | **0.700** | 0.300 | 0.000 | 80.2 |
-| QR-DQN best | 0.660 | 0.340 | 0.000 | 73.7 |
-| QR-DQN final (N=30) | 0.100 | 0.900 | 0.000 | -73.9 |
+## Train-condition check (`easy`, `reward.mode=new`, N=50)
 
-Prefer **EvalCallback `best_model`** for QR-DQN (final overfit / degraded).
-PPO **final** transferred better to `baseline` than its early `best_model`.
+| Model | Success | Collision | Mean return |
+|-------|---------|-----------|-------------|
+| PPO best (400k) | 0.700 | 0.300 | 80.2 |
+| PPO cont best (~800k) | 0.780 | 0.220 | 94.1 |
+| QR-DQN best (first) | 0.660 | 0.340 | 73.7 |
+| **QR-DQN cont best** | **0.800** | **0.200** | 94.8 |
+
+Prefer **EvalCallback `best_model`** for QR-DQN when final drifts.
 
 ## Commands
 
@@ -29,11 +33,11 @@ PPO **final** transferred better to `baseline` than its early `best_model`.
 python eval_policy.py --model dqn_avoidance_agent5 --algo dqn \
   --scenario baseline --reward-mode old --episodes 50 --seed 0
 
-python eval_policy.py --model models/ppo_CnnPolicy_easy_s0/final_model.zip --algo ppo \
+python eval_policy.py --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
   --scenario baseline --reward-mode old --episodes 50 --seed 0
 
-python eval_policy.py --model models/qrdqn_CnnPolicy_easy_s0/best_model.zip --algo qrdqn \
-  --scenario baseline --reward-mode old --episodes 50 --seed 0
+python train.py --algo qrdqn --resume models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip \
+  --timesteps 300000 --run-name qrdqn_CnnPolicy_easy_s0_cont2
 ```
 
 Raw JSON: files in this directory.

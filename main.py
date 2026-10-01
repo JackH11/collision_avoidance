@@ -27,6 +27,9 @@ from utils import save_data
 
 DEFAULT_MODEL_CANDIDATES = [
     # Prefer Phase 2 CNN checkpoints when present locally (gitignored).
+    "models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip",
+    "models/ppo_CnnPolicy_easy_s0_cont/final_model.zip",
+    "models/ppo_CnnPolicy_easy_s0_cont/best_model.zip",
     "models/ppo_CnnPolicy_easy_s0/final_model.zip",
     "models/ppo_CnnPolicy_easy_s0/best_model.zip",
     "models/qrdqn_CnnPolicy_easy_s0/best_model.zip",
