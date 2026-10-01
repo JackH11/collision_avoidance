@@ -1,5 +1,7 @@
 # Collision Avoidance — developer targets (Phase 3+)
 
+PYTHON ?= python3
+
 .PHONY: eval-suite eval-suite-smoke regression-gate regression-gate-json help
 
 help:
@@ -11,16 +13,16 @@ help:
 
 # Full formal suite: easy/baseline/hard × baselines + any local Phase 2 zips
 eval-suite:
-	python evals/run_suite.py --episodes 20 --seeds 0 --scenarios easy,baseline,hard
+	$(PYTHON) evals/run_suite.py --episodes 20 --seeds 0 --scenarios easy,baseline,hard
 
 # Faster local smoke (still writes artifacts)
 eval-suite-smoke:
-	python evals/run_suite.py --episodes 5 --seeds 0 --scenarios baseline
+	$(PYTHON) evals/run_suite.py --episodes 5 --seeds 0 --scenarios baseline
 
 # Live rollout gate — requires a models/*.zip from Phase 2 training
 regression-gate:
-	python evals/regression_gate.py
+	$(PYTHON) evals/regression_gate.py
 
 # Threshold check without retraining (uses evals/ppo_final_baseline_old.json)
 regression-gate-json:
-	python evals/regression_gate.py --from-json evals/ppo_final_baseline_old.json
+	$(PYTHON) evals/regression_gate.py --from-json evals/ppo_final_baseline_old.json
