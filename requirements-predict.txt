@@ -1,0 +1,7 @@
+# Optional extras for the Keras NN trajectory predictor.
+# Core train/demo (simple constant-velocity predictor) does not need these.
+#
+#   pip install -r requirements.txt
+#   pip install -r requirements-predict.txt
+#
+tensorflow>=2.13,<2.17

@@ -22,4 +22,11 @@ agent:
 goal:
   radius: 6
   color: [0,255,0]
+episode:
+  max_steps: 1000
+prediction:
+  # simple = constant-velocity cones (default; no TensorFlow)
+  # nn = Keras uncertainty model (requires requirements-predict.txt)
+  backend: simple
+  model_name: j_10_5
 
