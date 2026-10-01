@@ -41,3 +41,15 @@ python train.py --algo qrdqn --resume models/qrdqn_CnnPolicy_easy_s0_cont/best_m
 ```
 
 Raw JSON: files in this directory.
+
+## Phase 3
+
+Use the formal suite and regression gate (does not replace this table):
+
+```bash
+make eval-suite
+make regression-gate-json   # threshold check without models/*.zip
+```
+
+See [`THRESHOLDS.md`](THRESHOLDS.md) for gate floors/ceilings
+(`success_floor=0.30`, `collision_ceiling=0.70` on `baseline`/`old`).

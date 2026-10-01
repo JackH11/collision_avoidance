@@ -9,3 +9,8 @@ runs/*
 models/*
 __pycache__/
 *.pyc
+evals/__pycache__/
+# Timestamped suite dumps; keep suite_latest.* when intentionally committed
+evals/artifacts/suite_2*.json
+evals/artifacts/suite_2*.csv
+evals/artifacts/suite_2*.md
