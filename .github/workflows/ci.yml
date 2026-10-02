@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "cursor/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests + smoke gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system deps for pygame
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev \
+            libsdl2-ttf-dev libfreetype6-dev
+
+      - name: Install Python deps (CPU torch)
+        run: |
+          python -m pip install -U pip setuptools wheel
+          # Force CPU torch first so requirements.txt does not pull CUDA wheels.
+          pip install "torch>=2.0,<3" --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Unit / smoke tests
+        env:
+          SDL_VIDEODRIVER: dummy
+          PYGAME_HIDE_SUPPORT_PROMPT: "1"
+        run: python -m pytest
+
+      - name: Regression gate (JSON fixture)
+        run: make regression-gate-json PYTHON=python
+
+      - name: Regression gate (live, skip if no models/)
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: python evals/regression_gate.py --skip-if-missing
+
+      - name: Eval suite smoke (baseline, N=5)
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: make eval-suite-smoke PYTHON=python

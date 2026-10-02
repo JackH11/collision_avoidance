@@ -20,6 +20,8 @@ Do not move or delete that tag.
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+# Optional: unit-test extras
+pip install -r requirements-dev.txt
 ```
 
 Optional NN predictor extras:
@@ -190,6 +192,38 @@ when present, else loads `dqn_avoidance_agent5`. Draws the policy grid with the
 
 Default `prediction.backend: simple` does **not** import or load TensorFlow.
 
+## Tests & CI (Phase 4)
+
+Headless unit/smoke tests cover env reset/step, obs shape, info keys,
+action→velocity, scenario config, lag features, baselines, and gate helpers.
+No large model zips required.
+
+```bash
+pip install -r requirements-dev.txt
+make test
+# or:
+SDL_VIDEODRIVER=dummy python -m pytest
+```
+
+**What CI runs** (`.github/workflows/ci.yml` on push/PR to `main`):
+
+1. `pip install -r requirements.txt -r requirements-dev.txt` (CPU torch)
+2. `python -m pytest` — unit/smoke tests
+3. `make regression-gate-json` — threshold check on checked-in
+   `evals/ppo_final_baseline_old.json` (no model zip)
+4. `evals/regression_gate.py --skip-if-missing` — live gate if `models/` exists,
+   otherwise SKIP exit 0
+5. `make eval-suite-smoke` — short baseline suite (N=5; soft-skips missing zips)
+
+Local mirror of CI:
+
+```bash
+make ci
+```
+
+Seeded env determinism: same `reset(seed=…)` reproduces first-K obstacle/agent
+poses under the simple predictor. TF/SB3 training RNG is not asserted.
+
 ## Artifacts
 
 Large training artifacts are gitignored (`agents/*`, `dqn_tensorboard/*`,
@@ -205,6 +239,10 @@ git checkout baseline
 
 ## Project layout (high level)
 
+Layout stays mostly flat (root CLIs) so existing train/eval paths keep working.
+Dead stubs / Untitled notebooks are quarantined under `archive/` and
+`notebooks/archive/`.
+
 | Path | Role |
 |------|------|
 | `gym_env.py` | `MovingAvoidanceEnv` (Gymnasium), movers, grid obs |
@@ -216,8 +254,11 @@ git checkout baseline
 | `evals/run_suite.py` | Multi-scenario suite → `evals/artifacts/` |
 | `evals/regression_gate.py` | Success/collision regression gate |
 | `evals/baselines.py` | random / greedy / freeze controls |
-| `Makefile` | `eval-suite`, `regression-gate` targets |
+| `tests/` | pytest unit/smoke (Phase 4) |
+| `Makefile` | `test`, `ci`, `eval-suite`, `regression-gate*` |
+| `.github/workflows/ci.yml` | Install deps → tests → JSON gate → suite smoke |
 | `model_loader.py` | Shared DQN/PPO/QR-DQN zip loader |
 | `main.py` | Interactive Pygame demo |
 | `model_prediction.py` | Simple + NN prediction backends |
 | `config.yaml` | Single source of sim/config knobs |
+| `archive/` | Quarantined dead stubs (not imported) |
