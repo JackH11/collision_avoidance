@@ -21,4 +21,3 @@ evals/__pycache__/
 evals/artifacts/suite_2*.json
 evals/artifacts/suite_2*.csv
 evals/artifacts/suite_2*.md
-.venv/
