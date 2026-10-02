@@ -21,3 +21,14 @@ evals/__pycache__/
 evals/artifacts/suite_2*.json
 evals/artifacts/suite_2*.csv
 evals/artifacts/suite_2*.md
+# Godot editor cache (keep project sources)
+godot_replay/.godot/
+godot_replay/.import/
+# Oversized ad-hoc trajectory dumps; keep checked-in sample large_best.json
+media/trajectories/*.json
+!media/trajectories/large_best.json
+!media/trajectories/README.md
+# Raw Godot MovieWriter dumps (convert to mp4 before committing)
+media/*.avi
+godot_replay/data/*.json
+!godot_replay/data/.gitkeep

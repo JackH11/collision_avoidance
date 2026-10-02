@@ -208,7 +208,22 @@ make demo-record
 **Keys (windowed):** `G` grid · `P` cones · `N` noise (next episode) · `R` reset · `Space` pause · `+`/`-` zoom · `Esc` quit.
 
 Sample clips (checked in): ![demo](media/demo.gif) · ![large map](media/demo_large.gif)
-`env.render()` remains a no-op stub; this script is the only interactive renderer.
+
+### Godot replay (prettier renders)
+
+Python dumps trajectories; a Godot 4 project replays them with trails, soft
+disks, and camera follow — without porting the RL env.
+
+```bash
+python dump_trajectory.py --scenario large --episodes 5 --seed 0 \
+  --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
+cp media/trajectories/large_best.json godot_replay/data/large_best.json
+godot --path godot_replay
+# or: make godot-movie   # → media/godot_large.mp4 (needs xvfb + Godot 4.3+)
+```
+
+See [`godot_replay/README.md`](godot_replay/README.md). Sample render:
+[`media/godot_large.mp4`](media/godot_large.mp4).
 
 ### Research vs demo
 
@@ -297,7 +312,9 @@ Dead stubs / Untitled notebooks are quarantined under `archive/` and
 | `.github/workflows/ci.yml` | Install deps → tests → JSON gate → suite smoke |
 | `model_loader.py` | Shared DQN/PPO/QR-DQN zip loader |
 | `main.py` | Phase 5 demo (HUD, modes, headless record) |
-| `media/` | Sample `demo.gif` / `demo.mp4` |
+| `dump_trajectory.py` | JSON dumps for Godot replay |
+| `godot_replay/` | Godot 4.3 viewer (render-only) |
+| `media/` | Sample demos + `godot_large.mp4` / trajectories |
 | `model_prediction.py` | Simple + NN prediction backends |
 | `config.yaml` | Single source of sim/config knobs |
 | `archive/` | Quarantined dead stubs (not imported) |

@@ -2,9 +2,11 @@
 
 PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
+GODOT ?= godot
 
 .PHONY: help test test-fast eval-suite eval-suite-smoke regression-gate \
-	regression-gate-json regression-gate-ci demo-record demo-large ci
+	regression-gate-json regression-gate-ci demo-record demo-large \
+	dump-trajectory godot-movie ci
 
 help:
 	@echo "Targets:"
@@ -16,6 +18,8 @@ help:
 	@echo "  make regression-gate-ci    JSON gate + live gate with --skip-if-missing"
 	@echo "  make demo-record           Headless GIF+MP4 under media/ (needs model zip)"
 	@echo "  make demo-large            Best agent on large 400×400 map → media/demo_large.*"
+	@echo "  make dump-trajectory       JSON dump for Godot replay"
+	@echo "  make godot-movie           Render Godot replay → media/godot_large.mp4"
 	@echo "  make ci                    tests + regression-gate-ci + eval-suite-smoke"
 
 # Fast unit/smoke tests (headless; no model zips required)
@@ -61,6 +65,22 @@ demo-large:
 		--headless --scenario large --record media/demo_large.mp4 \
 		--model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
 		--episodes 5 --fps 30 --seed 0
+
+# Trajectory JSON for Godot (Python = brain)
+dump-trajectory:
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) dump_trajectory.py \
+		--scenario large --episodes 5 --seed 0 \
+		--model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
+		--out media/trajectories/large_best.json
+	mkdir -p godot_replay/data
+	cp media/trajectories/large_best.json godot_replay/data/large_best.json
+
+# Pretty Godot 4 replay → mp4 (requires Godot 4.3+ on PATH and xvfb-run)
+godot-movie: dump-trajectory
+	xvfb-run -a $(GODOT) --path godot_replay --write-movie ../media/godot_large.avi \
+		--fixed-fps 30 -- --trajectory res://data/large_best.json --quit-when-done --speed 1.25
+	ffmpeg -y -i media/godot_large.avi -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
+		media/godot_large.mp4
 
 # What GitHub Actions runs (mirrors .github/workflows/ci.yml)
 ci: test regression-gate-ci eval-suite-smoke
