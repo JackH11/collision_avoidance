@@ -1,0 +1,26 @@
+{
+  "model": "dqn_avoidance_agent5.zip",
+  "algo": "dqn",
+  "episodes": 50,
+  "seed": 0,
+  "deterministic": true,
+  "prediction_backend": "simple",
+  "scenario": "baseline",
+  "reward_mode": "old",
+  "success_rate": 0.02,
+  "collision_rate": 0.98,
+  "timeout_rate": 0.0,
+  "other_rate": 0.0,
+  "counts": {
+    "success": 1,
+    "collision": 49,
+    "timeout": 0,
+    "other": 0
+  },
+  "mean_return": -457.11080721124483,
+  "mean_episode_length": 86.76,
+  "mean_final_goal_dist": 76.11292063048944,
+  "mean_min_obstacle_dist": 13.380124748174007,
+  "elapsed_sec": 70.51726915500012,
+  "sec_per_episode": 1.4103453831000023
+}

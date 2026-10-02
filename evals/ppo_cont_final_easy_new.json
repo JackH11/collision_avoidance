@@ -1,0 +1,26 @@
+{
+  "model": "models/ppo_CnnPolicy_easy_s0_cont/final_model.zip",
+  "algo": "ppo",
+  "episodes": 50,
+  "seed": 0,
+  "deterministic": true,
+  "prediction_backend": "simple",
+  "scenario": "easy",
+  "reward_mode": "new",
+  "success_rate": 0.76,
+  "collision_rate": 0.24,
+  "timeout_rate": 0.0,
+  "other_rate": 0.0,
+  "counts": {
+    "success": 38,
+    "collision": 12,
+    "timeout": 0,
+    "other": 0
+  },
+  "mean_return": 89.51955412965306,
+  "mean_episode_length": 16.14,
+  "mean_final_goal_dist": 21.389815278754682,
+  "mean_min_obstacle_dist": 29.513102109037256,
+  "elapsed_sec": 38.66108277500007,
+  "sec_per_episode": 0.7732216555000013
+}

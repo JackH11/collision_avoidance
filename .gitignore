@@ -4,4 +4,8 @@ venv/
 agents/*
 dqn_tensorboard/*
 checkpoints/*
-__pycache__/*
+tb_logs/*
+runs/*
+models/*
+__pycache__/
+*.pyc

@@ -1,0 +1,26 @@
+{
+  "model": "models/qrdqn_CnnPolicy_easy_s0/best_model.zip",
+  "algo": "qrdqn",
+  "episodes": 50,
+  "seed": 0,
+  "deterministic": true,
+  "prediction_backend": "simple",
+  "scenario": "easy",
+  "reward_mode": "new",
+  "success_rate": 0.66,
+  "collision_rate": 0.34,
+  "timeout_rate": 0.0,
+  "other_rate": 0.0,
+  "counts": {
+    "success": 33,
+    "collision": 17,
+    "timeout": 0,
+    "other": 0
+  },
+  "mean_return": 73.6888354299198,
+  "mean_episode_length": 13.92,
+  "mean_final_goal_dist": 22.283361905286615,
+  "mean_min_obstacle_dist": 27.87182517358077,
+  "elapsed_sec": 0.5763149629997315,
+  "sec_per_episode": 0.01152629925999463
+}
