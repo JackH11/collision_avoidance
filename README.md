@@ -104,7 +104,8 @@ python train_dqn.py
 
 ## Evaluate
 
-Roll out a saved agent and print success / collision / timeout rates.
+Roll out a saved agent and print success / collision / timeout rates plus
+safety metrics (time-to-goal, min clearance, near-miss, prediction-cone risk).
 Auto-detects DQN / PPO / QR-DQN from the zip (or pass `--algo`):
 
 ```bash
@@ -123,6 +124,49 @@ is checked in under [`evals/COMPARISON.md`](evals/COMPARISON.md): legacy DQN
 ~2% success vs continued QR-DQN CNN **~74%** success / **~26%** collision
 (PPO cont ~60%). Demo prefers `models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip`
 when present.
+
+### Formal eval suite & regression gate (Phase 3)
+
+One command runs **easy / baseline / hard** (and optional seeds) for any local
+Phase 2 checkpoints **plus** scripted baselines (`random`, `greedy`, `freeze`).
+Writes JSON / CSV / Markdown under `evals/artifacts/`.
+
+```bash
+# Full suite (soft-skips missing models/*.zip — no multi-hour retrain required)
+make eval-suite
+# or:
+python evals/run_suite.py --episodes 20 --seeds 0 --scenarios easy,baseline,hard
+
+# Quick smoke
+make eval-suite-smoke
+```
+
+**Regression gate** (baseline scenario): fails if `success_rate < 0.30` or
+`collision_rate > 0.70`. Thresholds are documented in
+[`evals/THRESHOLDS.md`](evals/THRESHOLDS.md) / [`evals/gate_config.yaml`](evals/gate_config.yaml)
+and leave headroom under the measured ~48% / ~52% Phase 2 CNN numbers while
+rejecting a collapse toward legacy DQN (~2% / ~98%).
+
+```bash
+# Live gate — needs a Phase 2 zip under models/ (exit 1 = metric fail, 2 = missing)
+make regression-gate
+python evals/regression_gate.py --model models/ppo_CnnPolicy_easy_s0/final_model.zip
+
+# No zip required — validate gate math on checked-in Phase 2 summary (should PASS)
+make regression-gate-json
+```
+
+If `models/` is empty, train first (artifacts are gitignored):
+
+```bash
+python train.py --algo ppo --scenario easy --reward-mode new --timesteps 400000
+python train.py --algo qrdqn --scenario easy --reward-mode new --timesteps 300000
+```
+
+**Interpreting the gate:** PASS means the candidate stays in the Phase 2 CNN
+performance band on `baseline`/`old`. FAIL means success dropped below the
+floor or collisions exceeded the ceiling — do not merge training changes until
+fixed or thresholds are deliberately revised with evidence.
 
 ## Demo
 
@@ -168,7 +212,11 @@ git checkout baseline
 | `train_config.yaml` | Training hyperparameters / seeds / paths |
 | `policies.py` | Custom `GridCnnExtractor` for `(C,H,W)` float grids |
 | `train_dqn.py` | Legacy SB3 DQN + MlpPolicy (baseline reference) |
-| `eval_policy.py` | Offline success/collision/timeout eval |
+| `eval_policy.py` | Offline eval + safety metrics |
+| `evals/run_suite.py` | Multi-scenario suite → `evals/artifacts/` |
+| `evals/regression_gate.py` | Success/collision regression gate |
+| `evals/baselines.py` | random / greedy / freeze controls |
+| `Makefile` | `eval-suite`, `regression-gate` targets |
 | `model_loader.py` | Shared DQN/PPO/QR-DQN zip loader |
 | `main.py` | Interactive Pygame demo |
 | `model_prediction.py` | Simple + NN prediction backends |

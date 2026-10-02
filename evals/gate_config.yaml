@@ -1,0 +1,31 @@
+# Phase 3 regression gate thresholds (baseline scenario).
+#
+# Grounded in Phase 2 measured CNN performance on baseline/old @ N=50, seed=0:
+#   PPO final / QR-DQN best ≈ 48% success / 52% collision
+#   Legacy DQN+MLP ≈ 2% success / 98% collision
+#
+# Floors/ceilings leave headroom for seed noise and short evals (N≈30–50)
+# while still rejecting a collapse toward the legacy DQN regime.
+
+scenario: baseline
+reward_mode: old
+prediction_backend: simple
+episodes: 30
+seed: 0
+near_miss_dist: 24.0
+
+# Fail if success_rate < success_floor OR collision_rate > collision_ceiling
+success_floor: 0.30
+collision_ceiling: 0.70
+
+# Prefer first existing path (Phase 2 artifacts are gitignored — train locally)
+model_candidates:
+  - models/ppo_CnnPolicy_easy_s0/final_model.zip
+  - models/ppo_CnnPolicy_easy_s0/best_model.zip
+  - models/qrdqn_CnnPolicy_easy_s0/best_model.zip
+  - models/qrdqn_CnnPolicy_easy_s0/final_model.zip
+
+# Optional: validate gate math against a checked-in Phase 2 summary without
+# needing the zip (CI / machines without trained artifacts).
+# Use: python evals/regression_gate.py --from-json evals/ppo_final_baseline_old.json
+reference_json: evals/ppo_final_baseline_old.json
