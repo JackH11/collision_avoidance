@@ -200,7 +200,12 @@ def parse_args(argv: Optional[List[str]] = None):
     )
     p.add_argument("--model", default=None, help="SB3 zip (auto-picks Phase 2 best if omitted)")
     p.add_argument("--algo", default=None, choices=["ppo", "qrdqn", "dqn"])
-    p.add_argument("--scenario", default="baseline", choices=["easy", "baseline", "hard"])
+    p.add_argument(
+        "--scenario",
+        default="baseline",
+        choices=["easy", "baseline", "hard", "large"],
+        help="Named scenario (large = 400×400 arena showcase)",
+    )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
         "--predictor",
@@ -305,12 +310,16 @@ def _draw_world(
     black = tuple(CONFIG["colors"]["black"])
     surface.fill(white)
     _draw_boundary(surface, env)
+    origin = (
+        env.window_width / 2 - env.width / 2,
+        env.window_height / 2 - env.height / 2,
+    )
 
     if view.show_predictions and predictions is not None:
         env.draw_predictions(surface, env.obstacles, predictions)
 
     for obstacle in env.obstacles:
-        obstacle.draw(surface)
+        obstacle.draw(surface, origin=origin)
 
     env.draw_arrow_from_base(surface, black, env.agent.x, env.agent.y, action)
     env.agent.draw(
@@ -319,6 +328,7 @@ def _draw_world(
         env.obstacles,
         predictions,
         dots=view.show_grid,
+        origin=origin,
     )
     env.draw_goal(surface)
 
@@ -362,6 +372,10 @@ def run_demo(args) -> int:
         show_predictions=True,
         zoom=max(1.0, float(args.zoom)),
     )
+    # Large arena already fills the frame — don't apply the 3× baseline zoom
+    # unless the user explicitly passed --zoom.
+    if args.scenario == "large" and "--zoom" not in sys.argv:
+        view.zoom = 1.5
 
     reward_mode = args.reward_mode
     env = MovingAvoidanceEnv(
