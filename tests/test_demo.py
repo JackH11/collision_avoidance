@@ -20,6 +20,7 @@ def test_parse_args_defaults():
     assert args.predictor == "simple"
     assert args.seed == 0
     assert args.headless is False
+    assert args.zoom == 3.0
 
 
 def test_parse_args_research_and_record():
@@ -34,6 +35,8 @@ def test_parse_args_research_and_record():
             "2",
             "--fps",
             "15",
+            "--zoom",
+            "2.5",
         ]
     )
     assert args.mode == "research"
@@ -41,6 +44,7 @@ def test_parse_args_research_and_record():
     assert args.record == "media/out.gif"
     assert args.episodes == 2
     assert args.fps == 15
+    assert args.zoom == 2.5
 
 
 def test_view_opts_defaults():
@@ -48,6 +52,7 @@ def test_view_opts_defaults():
     assert v.show_grid is False
     assert v.show_predictions is True
     assert v.paused is False
+    assert v.zoom == 3.0
 
 
 def test_frame_recorder_gif(tmp_path: Path):

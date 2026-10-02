@@ -194,12 +194,13 @@ make demo-record
 | `--scenario` / `--seed` | `easy` \| `baseline` \| `hard` |
 | `--predictor` | `simple` (default) \| `nn_uncertainty` |
 | `--mode` | `demo` \| `research` |
+| `--zoom` | Visual scale (default **3×**): crop to playfield then enlarge |
 | `--record` | Write `.gif` (Pillow) or `.mp4` (ffmpeg) |
 | `--headless` | No window (`SDL_VIDEODRIVER=dummy`) |
 | `--episodes` / `--max-frames` | Stop conditions (headless defaults to 3 episodes) |
 | `--collect-data` | Dump obstacle trajectories (research / predictor data) |
 
-**Keys (windowed):** `G` grid · `P` cones · `N` noise (next episode) · `R` reset · `Space` pause · `Esc` quit.
+**Keys (windowed):** `G` grid · `P` cones · `N` noise (next episode) · `R` reset · `Space` pause · `+`/`-` zoom · `Esc` quit.
 
 Sample clip (checked in): ![demo](media/demo.gif) — regenerate via `make demo-record`.
 `env.render()` remains a no-op stub; this script is the only interactive renderer.

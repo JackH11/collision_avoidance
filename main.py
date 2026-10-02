@@ -19,6 +19,7 @@ Keys (windowed):
   N  toggle obstacle velocity noise (applies next episode)
   R  reset episode now
   Space  pause
+  + / -  zoom in / out
   Esc / quit  exit
 """
 
@@ -97,6 +98,7 @@ class ViewOpts:
     show_predictions: bool = True
     obstacle_noise: Optional[bool] = None  # None = scenario default
     paused: bool = False
+    zoom: float = 3.0  # display scale; crops to playfield then enlarges
 
 
 @dataclass
@@ -216,6 +218,12 @@ def parse_args(argv: Optional[List[str]] = None):
     p.add_argument("--episodes", type=int, default=0, help="Stop after N finished episodes (0 = unlimited)")
     p.add_argument("--max-frames", type=int, default=0, help="Hard frame cap (0 = unlimited)")
     p.add_argument("--fps", type=int, default=60, help="Display / record FPS")
+    p.add_argument(
+        "--zoom",
+        type=float,
+        default=3.0,
+        help="Visual scale: crop to the playfield then enlarge (physics/obs unchanged)",
+    )
     p.add_argument("--record", default=None, help="Write .gif or .mp4 to this path")
     p.add_argument(
         "--headless",
@@ -226,6 +234,18 @@ def parse_args(argv: Optional[List[str]] = None):
     return p.parse_args(argv)
 
 
+def _playfield_rect(env: MovingAvoidanceEnv, pad: int = 20) -> pygame.Rect:
+    """Axis-aligned crop around the sim boundary (plus pad)."""
+    ox = env.window_width / 2 - env.width / 2
+    oy = env.window_height / 2 - env.height / 2
+    return pygame.Rect(
+        max(0, int(ox) - pad),
+        max(0, int(oy) - pad),
+        int(env.width) + 2 * pad,
+        int(env.height) + 2 * pad,
+    ).clip(pygame.Rect(0, 0, env.window_width, env.window_height))
+
+
 def _draw_boundary(surface, env, color=(200, 200, 200)) -> None:
     ox = env.window_width / 2 - env.width / 2
     oy = env.window_height / 2 - env.height / 2
@@ -233,11 +253,19 @@ def _draw_boundary(surface, env, color=(200, 200, 200)) -> None:
         surface,
         color,
         pygame.Rect(int(ox), int(oy), int(env.width), int(env.height)),
-        1,
+        2,
     )
 
 
-def _draw_hud(surface, font, env, algo: str, stats: HudStats, view: ViewOpts, info: dict) -> None:
+def _draw_hud(
+    surface,
+    font,
+    env,
+    algo: str,
+    stats: HudStats,
+    view: ViewOpts,
+    info: dict,
+) -> None:
     black = (20, 20, 20)
     lines = [
         f"{algo.upper()}  |  {env.scenario_name}  |  {stats.last_outcome}",
@@ -247,26 +275,31 @@ def _draw_hud(surface, font, env, algo: str, stats: HudStats, view: ViewOpts, in
         f"clear {float(info.get('min_obstacle_dist', float('nan'))):.0f}",
         f"grid={'on' if view.show_grid else 'off'}  "
         f"cones={'on' if view.show_predictions else 'off'}  "
-        f"noise={'on' if env.obstacle_noise else 'off'}"
+        f"noise={'on' if env.obstacle_noise else 'off'}  "
+        f"zoom={view.zoom:.1f}x"
         + ("  PAUSED" if view.paused else ""),
     ]
     y = 8
     for text in lines:
         surf = font.render(text, True, black)
+        # Light backing so HUD stays readable on busy frames
+        pad = 2
+        bg = pygame.Surface(
+            (surf.get_width() + 2 * pad, surf.get_height() + 2 * pad),
+            pygame.SRCALPHA,
+        )
+        bg.fill((255, 255, 255, 210))
+        surface.blit(bg, (8 - pad, y - pad))
         surface.blit(surf, (8, y))
-        y += surf.get_height() + 2
+        y += surf.get_height() + 4
 
 
-def _draw_frame(
+def _draw_world(
     surface,
     env: MovingAvoidanceEnv,
     action: int,
     predictions,
     view: ViewOpts,
-    font,
-    algo: str,
-    stats: HudStats,
-    info: dict,
 ) -> None:
     white = tuple(CONFIG["colors"]["white"])
     black = tuple(CONFIG["colors"]["black"])
@@ -288,7 +321,25 @@ def _draw_frame(
         dots=view.show_grid,
     )
     env.draw_goal(surface)
-    _draw_hud(surface, font, env, algo, stats, view, info)
+
+
+def _compose_frame(
+    world: pygame.Surface,
+    env: MovingAvoidanceEnv,
+    view: ViewOpts,
+    font,
+    algo: str,
+    stats: HudStats,
+    info: dict,
+) -> pygame.Surface:
+    """Crop to playfield, scale by zoom, then overlay HUD."""
+    crop = _playfield_rect(env)
+    clipped = world.subsurface(crop)
+    zoom = max(1.0, float(view.zoom))
+    out_size = (max(1, int(crop.width * zoom)), max(1, int(crop.height * zoom)))
+    framed = pygame.transform.scale(clipped, out_size)
+    _draw_hud(framed, font, env, algo, stats, view, info)
+    return framed
 
 
 def run_demo(args) -> int:
@@ -309,6 +360,7 @@ def run_demo(args) -> int:
     view = ViewOpts(
         show_grid=(args.mode == "research"),
         show_predictions=True,
+        zoom=max(1.0, float(args.zoom)),
     )
 
     reward_mode = args.reward_mode
@@ -324,19 +376,23 @@ def run_demo(args) -> int:
     print(
         f"Demo mode={args.mode}  loaded {algo_name} from {resolved}  "
         f"scenario={env.scenario_name}  predictor={env.prediction_backend}  "
-        f"seed={args.seed}"
+        f"seed={args.seed}  zoom={view.zoom:.1f}x"
     )
 
     pygame.init()
     pygame.display.set_caption("Collision Avoidance — Phase 5 Demo")
+    world = pygame.Surface((env.window_width, env.window_height))
+    crop0 = _playfield_rect(env)
+    out_w = max(1, int(crop0.width * view.zoom))
+    out_h = max(1, int(crop0.height * view.zoom))
     if headless:
-        screen = pygame.Surface((env.window_width, env.window_height))
         display = None
+        screen = pygame.Surface((out_w, out_h))
     else:
-        display = pygame.display.set_mode((env.window_width, env.window_height))
+        display = pygame.display.set_mode((out_w, out_h))
         screen = display
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont("dejavusans", 18)
+    font = pygame.font.SysFont("dejavusans", 20)
 
     recorder = FrameRecorder(Path(record_path), fps=min(args.fps, 30)) if record_path else None
 
@@ -374,6 +430,24 @@ def run_demo(args) -> int:
                             view.obstacle_noise = env.obstacle_noise
                         elif event.key == pygame.K_SPACE:
                             view.paused = not view.paused
+                        elif event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
+                            view.zoom = min(6.0, view.zoom + 0.5)
+                            crop = _playfield_rect(env)
+                            size = (
+                                max(1, int(crop.width * view.zoom)),
+                                max(1, int(crop.height * view.zoom)),
+                            )
+                            display = pygame.display.set_mode(size)
+                            screen = display
+                        elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                            view.zoom = max(1.0, view.zoom - 0.5)
+                            crop = _playfield_rect(env)
+                            size = (
+                                max(1, int(crop.width * view.zoom)),
+                                max(1, int(crop.height * view.zoom)),
+                            )
+                            display = pygame.display.set_mode(size)
+                            screen = display
                         elif event.key == pygame.K_r:
                             stats.record(info, ep_return)
                             obs, info = env.reset(seed=args.seed + ep_idx + 1)
@@ -423,21 +497,20 @@ def run_demo(args) -> int:
             else:
                 predictions = None
 
-            _draw_frame(
-                screen,
-                env,
-                action,
-                predictions,
-                view,
-                font,
-                algo_name,
-                stats,
-                info,
+            _draw_world(world, env, action, predictions, view)
+            frame_surf = _compose_frame(
+                world, env, view, font, algo_name, stats, info
             )
             if display is not None:
+                if frame_surf.get_size() != display.get_size():
+                    display = pygame.display.set_mode(frame_surf.get_size())
+                    screen = display
+                display.blit(frame_surf, (0, 0))
                 pygame.display.flip()
+            else:
+                screen = frame_surf
             if recorder is not None:
-                recorder.add(screen)
+                recorder.add(frame_surf)
 
             clock.tick(args.fps)
             frame += 1
