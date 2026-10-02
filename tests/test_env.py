@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from gym_env import GRID_SIZE, MovingAvoidanceEnv
+from collision_avoidance.env.gym_env import GRID_SIZE, MovingAvoidanceEnv
 from tests.conftest import INFO_KEYS
 
 

@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from eval_policy import evaluate, print_summary  # noqa: E402
+from collision_avoidance.eval.eval_policy import evaluate, print_summary  # noqa: E402
 from evals.baselines import BASELINE_FACTORIES  # noqa: E402
 
 DEFAULT_MODELS = [
