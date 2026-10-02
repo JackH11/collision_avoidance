@@ -173,7 +173,7 @@ def parse_args():
     p.add_argument("--config", default=str(DEFAULT_CONFIG), help="train_config.yaml path")
     p.add_argument("--algo", choices=["ppo", "qrdqn", "dqn"], default=None)
     p.add_argument("--policy", choices=["CnnPolicy", "MlpPolicy"], default=None)
-    p.add_argument("--scenario", choices=["easy", "baseline", "hard"], default=None)
+    p.add_argument("--scenario", choices=["easy", "baseline", "hard", "large"], default=None)
     p.add_argument("--reward-mode", choices=["old", "new"], default=None)
     p.add_argument("--prediction-backend", choices=["simple", "nn", "nn_uncertainty"], default=None)
     p.add_argument("--timesteps", type=int, default=None)

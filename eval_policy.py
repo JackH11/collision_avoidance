@@ -278,7 +278,7 @@ def main():
     parser.add_argument(
         "--scenario",
         default="baseline",
-        choices=["easy", "baseline", "hard"],
+        choices=["easy", "baseline", "hard", "large"],
         help="Named scenario from config.yaml",
     )
     parser.add_argument(

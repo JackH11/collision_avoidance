@@ -528,12 +528,16 @@ class MovingItem:
         self.vxs.append(self.vx)
         self.vys.append(self.vy)
 
-    def draw(self, surface, color=None):
+    def draw(self, surface, color=None, origin=None):
         draw_color = RED if self.add_noise else BLUE
         if color is not None and not isinstance(color, MovingItem):
             draw_color = color
-        ox = WINDOW_WIDTH / 2 - WIDTH / 2
-        oy = WINDOW_HEIGHT / 2 - HEIGHT / 2
+        if origin is None:
+            # Fall back to this item's arena size centered in the default window.
+            ox = WINDOW_WIDTH / 2 - self.width / 2
+            oy = WINDOW_HEIGHT / 2 - self.height / 2
+        else:
+            ox, oy = origin
         pygame.draw.circle(
             surface, draw_color, (ox + int(self.x), oy + int(self.y)), int(self.radius), 0
         )
@@ -608,15 +612,19 @@ class MovingAgent(MovingItem):
             goal_radius=getattr(env, "goal_radius", GOAL_RADIUS),
         )
 
-    def draw(self, surface, env, items=None, predictions=None, dots=False):
+    def draw(self, surface, env, items=None, predictions=None, dots=False, origin=None):
         color = LIGHT_GREY
-        ox = WINDOW_WIDTH / 2 - WIDTH / 2
-        oy = WINDOW_HEIGHT / 2 - HEIGHT / 2
+        if origin is None:
+            ox = env.window_width / 2 - env.width / 2
+            oy = env.window_height / 2 - env.height / 2
+        else:
+            ox, oy = origin
+        radius = getattr(env, "item_radius", ITEM_RADIUS)
         pygame.draw.circle(
-            surface, color, (ox + int(self.x), oy + int(self.y)), int(ITEM_RADIUS), 0
+            surface, color, (ox + int(self.x), oy + int(self.y)), int(radius), 0
         )
         pygame.draw.circle(
-            surface, BLACK, (ox + int(self.x), oy + int(self.y)), int(ITEM_RADIUS), 1
+            surface, BLACK, (ox + int(self.x), oy + int(self.y)), int(radius), 1
         )
 
         if not items or not predictions:

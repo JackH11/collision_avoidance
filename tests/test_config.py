@@ -11,7 +11,7 @@ from gym_env import MovingAvoidanceEnv
 def test_load_config_has_scenarios():
     cfg = load_config()
     assert "scenarios" in cfg
-    assert set(cfg["scenarios"]) >= {"easy", "baseline", "hard"}
+    assert set(cfg["scenarios"]) >= {"easy", "baseline", "hard", "large"}
 
 
 def test_resolve_scenario_applies_knobs_without_bleed():
@@ -32,7 +32,7 @@ def test_unknown_scenario_raises():
 
 
 def test_env_respects_scenario_counts():
-    for name, count in (("easy", 3), ("baseline", 5), ("hard", 8)):
+    for name, count in (("easy", 3), ("baseline", 5), ("hard", 8), ("large", 8)):
         env = MovingAvoidanceEnv(scenario=name)
         try:
             env.reset(seed=0)
@@ -41,3 +41,15 @@ def test_env_respects_scenario_counts():
             assert env.scenario_name == name
         finally:
             env.close()
+
+
+def test_large_scenario_arena():
+    env = MovingAvoidanceEnv(scenario="large")
+    try:
+        assert env.width == 400
+        assert env.height == 400
+        assert env.window_width == 520
+        obs, _ = env.reset(seed=0)
+        assert obs.shape == (3, 30, 30)
+    finally:
+        env.close()

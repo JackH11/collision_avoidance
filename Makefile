@@ -4,7 +4,7 @@ PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
 
 .PHONY: help test test-fast eval-suite eval-suite-smoke regression-gate \
-	regression-gate-json regression-gate-ci demo-record ci
+	regression-gate-json regression-gate-ci demo-record demo-large ci
 
 help:
 	@echo "Targets:"
@@ -15,6 +15,7 @@ help:
 	@echo "  make regression-gate-json  Gate against checked-in Phase 2 summary JSON"
 	@echo "  make regression-gate-ci    JSON gate + live gate with --skip-if-missing"
 	@echo "  make demo-record           Headless GIF+MP4 under media/ (needs model zip)"
+	@echo "  make demo-large            Best agent on large 400×400 map → media/demo_large.*"
 	@echo "  make ci                    tests + regression-gate-ci + eval-suite-smoke"
 
 # Fast unit/smoke tests (headless; no model zips required)
@@ -49,6 +50,17 @@ demo-record:
 		--headless --record media/demo.gif --scenario baseline --episodes 3 --fps 30
 	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
 		--headless --record media/demo.mp4 --scenario baseline --episodes 3 --fps 30
+
+# Best Phase 2 agent on the large 400×400 arena
+demo-large:
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
+		--headless --scenario large --record media/demo_large.gif \
+		--model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
+		--episodes 5 --fps 30 --seed 0
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
+		--headless --scenario large --record media/demo_large.mp4 \
+		--model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
+		--episodes 5 --fps 30 --seed 0
 
 # What GitHub Actions runs (mirrors .github/workflows/ci.yml)
 ci: test regression-gate-ci eval-suite-smoke

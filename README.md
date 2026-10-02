@@ -43,6 +43,7 @@ Set `scenario:` in `config.yaml`, or pass `--scenario` / `MovingAvoidanceEnv(sce
 | `easy` | 3 slower obstacles, no velocity noise, longer episodes (default train start) |
 | `baseline` | Historical defaults (5 noisy movers) — use for fair compares |
 | `hard` | 8 faster noisy movers, shorter episodes |
+| `large` | **400×400** arena showcase (8 movers); CNN obs still local 30×30 |
 
 ### Reward A/B
 
@@ -183,6 +184,10 @@ python main.py
 python main.py --mode demo --scenario baseline --seed 0
 python main.py --mode research --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
 
+# Best agent on the large 400×400 map
+python main.py --scenario large --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
+python main.py --headless --scenario large --record media/demo_large.gif --episodes 5 --fps 30
+
 # Headless clip for README / talks (.gif or .mp4; needs ffmpeg for mp4)
 python main.py --headless --record media/demo.gif --episodes 3 --fps 30
 make demo-record
@@ -202,7 +207,7 @@ make demo-record
 
 **Keys (windowed):** `G` grid · `P` cones · `N` noise (next episode) · `R` reset · `Space` pause · `+`/`-` zoom · `Esc` quit.
 
-Sample clip (checked in): ![demo](media/demo.gif) — regenerate via `make demo-record`.
+Sample clips (checked in): ![demo](media/demo.gif) · ![large map](media/demo_large.gif)
 `env.render()` remains a no-op stub; this script is the only interactive renderer.
 
 ### Research vs demo
