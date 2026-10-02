@@ -4,12 +4,16 @@ Checked-in samples for README / talks:
 
 | File | Notes |
 |------|--------|
-| `demo.gif` | Short headless capture (`baseline`, QR-DQN CNN when available) |
-| `demo.mp4` | Same pipeline, H.264 |
+| `demo.gif` / `demo.mp4` | Baseline arena, 3× zoom crop |
+| `demo_large.gif` / `demo_large.mp4` | **400×400** `large` scenario, best QR-DQN CNN |
 
-Regenerate (needs a local Phase 2 zip under `models/` or legacy `dqn_avoidance_agent5.zip`):
+Regenerate (needs a local Phase 2 zip under `models/`):
 
 ```bash
-python main.py --headless --record media/demo.gif --scenario baseline --episodes 3 --fps 30
-python main.py --headless --record media/demo.mp4 --scenario baseline --episodes 3 --fps 30
+make demo-record
+make demo-large
+# or:
+python main.py --headless --scenario large --record media/demo_large.gif \
+  --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
+  --episodes 5 --fps 30
 ```

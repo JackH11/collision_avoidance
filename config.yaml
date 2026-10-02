@@ -92,3 +92,20 @@ scenarios:
       noise_scale: 1.5
     episode:
       max_steps: 600
+  # Phase 5 showcase: larger arena (CNN obs is still local 30×30).
+  large:
+    window:
+      width: 520
+      height: 520
+    boundary:
+      width: 400
+      height: 400
+    obstacle:
+      count: 8
+      speed_min: 2.0
+      speed_max: 4.0
+      max_speed: 6.0
+      noise: true
+      noise_scale: 1.0
+    episode:
+      max_steps: 2000
