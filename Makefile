@@ -4,7 +4,7 @@ PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
 
 .PHONY: help test test-fast eval-suite eval-suite-smoke regression-gate \
-	regression-gate-json regression-gate-ci ci
+	regression-gate-json regression-gate-ci demo-record ci
 
 help:
 	@echo "Targets:"
@@ -14,6 +14,7 @@ help:
 	@echo "  make regression-gate       Live gate on Phase 2 checkpoint (fails if missing)"
 	@echo "  make regression-gate-json  Gate against checked-in Phase 2 summary JSON"
 	@echo "  make regression-gate-ci    JSON gate + live gate with --skip-if-missing"
+	@echo "  make demo-record           Headless GIF+MP4 under media/ (needs model zip)"
 	@echo "  make ci                    tests + regression-gate-ci + eval-suite-smoke"
 
 # Fast unit/smoke tests (headless; no model zips required)
@@ -41,6 +42,13 @@ regression-gate-json:
 # CI-friendly: always run JSON gate; live gate skips cleanly when models/ absent
 regression-gate-ci: regression-gate-json
 	SDL_VIDEODRIVER=dummy $(PYTHON) evals/regression_gate.py --skip-if-missing
+
+# Headless demo clip for README (GIF + MP4). Soft-fails if no model zip / ffmpeg.
+demo-record:
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
+		--headless --record media/demo.gif --scenario baseline --episodes 3 --fps 30
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
+		--headless --record media/demo.mp4 --scenario baseline --episodes 3 --fps 30
 
 # What GitHub Actions runs (mirrors .github/workflows/ci.yml)
 ci: test regression-gate-ci eval-suite-smoke

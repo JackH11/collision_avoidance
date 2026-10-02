@@ -170,17 +170,50 @@ performance band on `baseline`/`old`. FAIL means success dropped below the
 floor or collisions exceeded the ceiling — do not merge training changes until
 fixed or thresholds are deliberately revised with evidence.
 
-## Demo
+## Demo (Phase 5)
+
+**Demo mode** (default): env-driven episodes, HUD with success / collision /
+timeout counters, prediction cones on, policy-grid dots off.
+
+**Research mode**: same HUD + policy occupancy grid dots (what the CNN sees).
 
 ```bash
+# Interactive window
 python main.py
-python main.py --model models/ppo_CnnPolicy_easy_s0/best_model.zip --algo ppo
-python main.py --scenario baseline --model dqn_avoidance_agent5 --algo dqn
+python main.py --mode demo --scenario baseline --seed 0
+python main.py --mode research --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
+
+# Headless clip for README / talks (.gif or .mp4; needs ffmpeg for mp4)
+python main.py --headless --record media/demo.gif --episodes 3 --fps 30
+make demo-record
 ```
 
-**Canonical interactive renderer.** Prefers a Phase 2 `models/.../best_model.zip`
-when present, else loads `dqn_avoidance_agent5`. Draws the policy grid with the
-**simple** predictor. `env.render()` is intentionally a no-op stub.
+| Flag | Purpose |
+|------|---------|
+| `--model` / `--algo` | Checkpoint (auto-picks Phase 2 best under `models/` if present) |
+| `--scenario` / `--seed` | `easy` \| `baseline` \| `hard` |
+| `--predictor` | `simple` (default) \| `nn_uncertainty` |
+| `--mode` | `demo` \| `research` |
+| `--zoom` | Visual scale (default **3×**): crop to playfield then enlarge |
+| `--record` | Write `.gif` (Pillow) or `.mp4` (ffmpeg) |
+| `--headless` | No window (`SDL_VIDEODRIVER=dummy`) |
+| `--episodes` / `--max-frames` | Stop conditions (headless defaults to 3 episodes) |
+| `--collect-data` | Dump obstacle trajectories (research / predictor data) |
+
+**Keys (windowed):** `G` grid · `P` cones · `N` noise (next episode) · `R` reset · `Space` pause · `+`/`-` zoom · `Esc` quit.
+
+Sample clip (checked in): ![demo](media/demo.gif) — regenerate via `make demo-record`.
+`env.render()` remains a no-op stub; this script is the only interactive renderer.
+
+### Research vs demo
+
+| | Demo | Research |
+|--|------|----------|
+| Goal | Show avoidance clearly | Debug policy inputs |
+| Grid dots | Off (toggle `G`) | On |
+| Cones | On (toggle `P`) | On |
+| Data dump | Off | `--collect-data` |
+| Metrics | Live HUD + stdout episode lines | Same + eval suite / gate |
 
 ## Predictor path (optional TF)
 
@@ -258,7 +291,8 @@ Dead stubs / Untitled notebooks are quarantined under `archive/` and
 | `Makefile` | `test`, `ci`, `eval-suite`, `regression-gate*` |
 | `.github/workflows/ci.yml` | Install deps → tests → JSON gate → suite smoke |
 | `model_loader.py` | Shared DQN/PPO/QR-DQN zip loader |
-| `main.py` | Interactive Pygame demo |
+| `main.py` | Phase 5 demo (HUD, modes, headless record) |
+| `media/` | Sample `demo.gif` / `demo.mp4` |
 | `model_prediction.py` | Simple + NN prediction backends |
 | `config.yaml` | Single source of sim/config knobs |
 | `archive/` | Quarantined dead stubs (not imported) |
