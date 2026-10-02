@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=3 uid="uid://ca_replay_main"]
+
+[ext_resource type="Script" path="res://scripts/replay.gd" id="1_replay"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_replay")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position_smoothing_enabled = true
+position_smoothing_speed = 6.0
+zoom = Vector2(1.6, 1.6)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Panel" type="PanelContainer" parent="HUD"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 420.0
+offset_bottom = 140.0
+
+[node name="Label" type="Label" parent="HUD/Panel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Loading trajectory…"
