@@ -21,6 +21,7 @@ pandas>=2.0.0,<3.1
 scikit-learn>=1.3.0,<2
 torch>=2.0.0,<3  # required by stable-baselines3; prefer CPU wheels in CI (see workflow)
 tensorboard>=2.14.0,<3  # train.py TensorBoard logs under tb_logs/
+Pillow>=10.0.0  # main.py --record *.gif
 
 # Optional: NN trajectory predictor (make_nn_prediction / nn/nn.py)
 # Install separately if needed:
