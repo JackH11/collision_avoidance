@@ -9,3 +9,15 @@ runs/*
 models/*
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+evals/__pycache__/
+# IDE / notebook noise (do not re-add)
+.idea/
+.vscode/
+**/.ipynb_checkpoints/
+# Timestamped suite dumps; keep suite_latest.* when intentionally committed
+evals/artifacts/suite_2*.json
+evals/artifacts/suite_2*.csv
+evals/artifacts/suite_2*.md

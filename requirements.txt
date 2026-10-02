@@ -1,16 +1,27 @@
 # Core (Python 3.10 / 3.11 recommended; 3.12 usually works for train/demo)
+#
+# Install:
+#   pip install -r requirements.txt
+# Dev/CI extras (pytest):
+#   pip install -r requirements-dev.txt
+# Optional NN predictor (TensorFlow):
+#   pip install -r requirements-predict.txt
+#
+# CI note: prefer CPU torch to avoid multi-GB CUDA wheels:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+#
 gymnasium>=0.29.1,<1.1.0
 stable-baselines3>=2.3.0,<3.0.0
 sb3-contrib>=2.3.0,<3.0.0  # QR-DQN (Phase 2 Option A)
 pygame>=2.5.0,<3.0.0
 numpy>=1.24.0,<2.1.0
-pyyaml>=6.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
-torch>=2.0.0  # required by stable-baselines3
-tensorboard>=2.14.0  # train.py TensorBoard logs under tb_logs/
+pyyaml>=6.0,<7
+pandas>=2.0.0,<3.1
+scikit-learn>=1.3.0,<2
+torch>=2.0.0,<3  # required by stable-baselines3; prefer CPU wheels in CI (see workflow)
+tensorboard>=2.14.0,<3  # train.py TensorBoard logs under tb_logs/
 
 # Optional: NN trajectory predictor (make_nn_prediction / nn/nn.py)
 # Install separately if needed:
-#   pip install "tensorflow>=2.13,<2.17"
-# Or use requirements-predict.txt
+#   pip install -r requirements-predict.txt

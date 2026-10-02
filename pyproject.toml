@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "collision-avoidance"
+version = "0.4.0"
+description = "Gymnasium collision-avoidance env with grid obs and CNN policies"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "Proprietary" }
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = [
+  "ignore::UserWarning",
+  "ignore::DeprecationWarning",
+]
+
+[tool.setuptools]
+# Flat layout: keep root CLIs importable; no package move in Phase 4.
+py-modules = []
