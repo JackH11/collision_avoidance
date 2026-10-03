@@ -207,7 +207,12 @@ make demo-record
 
 **Keys (windowed):** `G` grid · `P` cones · `N` noise (next episode) · `R` reset · `Space` pause · `+`/`-` zoom · `Esc` quit.
 
-Sample clips (checked in): ![demo](media/demo.gif) · ![large map](media/demo_large.gif)
+Sample clips are **not** stored in git (large blobs). Generate locally:
+
+```bash
+make demo-record    # → media/demo.gif + media/demo.mp4
+make demo-large     # → media/demo_large.*
+```
 
 ### Godot replay (prettier renders)
 
@@ -222,8 +227,8 @@ godot --path godot_replay
 # or: make godot-movie   # → media/godot_large.mp4 (needs xvfb + Godot 4.3+)
 ```
 
-See [`godot_replay/README.md`](godot_replay/README.md). Sample render:
-[`media/godot_large.mp4`](media/godot_large.mp4).
+See [`godot_replay/README.md`](godot_replay/README.md). Output stays local under
+`media/` (gitignored).
 
 ### Research vs demo
 
@@ -314,7 +319,7 @@ Dead stubs / Untitled notebooks are quarantined under `archive/` and
 | `main.py` | Phase 5 demo (HUD, modes, headless record) |
 | `dump_trajectory.py` | JSON dumps for Godot replay |
 | `godot_replay/` | Godot 4.3 viewer (render-only) |
-| `media/` | Sample demos + `godot_large.mp4` / trajectories |
+| `media/` | Local demo renders (gitignored) + trajectory sample |
 | `model_prediction.py` | Simple + NN prediction backends |
 | `config.yaml` | Single source of sim/config knobs |
 | `archive/` | Quarantined dead stubs (not imported) |
