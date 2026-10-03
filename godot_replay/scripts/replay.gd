@@ -21,6 +21,8 @@ extends Node2D
 @export var sprite_scale: float = 1.25
 ## Skip tiny episodes so the reel doesn't feel like instant goal taps.
 @export var min_episode_frames: int = 50
+## Comma-separated outcomes to keep (empty = all). Showcase uses "success".
+@export var outcome_filter: String = "success"
 
 var _data: Dictionary = {}
 var _episodes: Array = []
@@ -42,7 +44,7 @@ func _ready() -> void:
 	_hud = $HUD/Panel/Label
 	var vp := get_viewport().get_visible_rect().size
 	_viewport_size = minf(vp.x, vp.y)
-	# CLI: godot -- --trajectory path.json --frame agent_goal --min-frames 50 --speed 0.85
+	# CLI: godot -- --trajectory path.json --frame agent_goal --outcomes success --speed 0.85
 	var args := OS.get_cmdline_user_args()
 	var i := 0
 	while i < args.size():
@@ -67,6 +69,10 @@ func _ready() -> void:
 			"--min-frames":
 				if i + 1 < args.size():
 					min_episode_frames = int(args[i + 1])
+					i += 1
+			"--outcomes":
+				if i + 1 < args.size():
+					outcome_filter = str(args[i + 1])
 					i += 1
 			"--frame":
 				if i + 1 < args.size():
@@ -105,21 +111,39 @@ func _load_trajectory(path: String) -> bool:
 	_data = parsed
 	_meta = _data.get("meta", {})
 	var raw_eps: Array = _data.get("episodes", [])
+	var allowed: Dictionary = {}
+	if outcome_filter.strip_edges() != "":
+		for part in outcome_filter.split(","):
+			allowed[part.strip_edges()] = true
 	_episodes = []
 	for ep in raw_eps:
 		var frames: Array = ep.get("frames", [])
+		var outcome := str(ep.get("outcome", ""))
+		if not allowed.is_empty() and not allowed.has(outcome):
+			continue
 		if frames.size() >= min_episode_frames:
 			_episodes.append(ep)
-	# If everything was filtered out, keep the longest raw episode so playback still works.
+	# If everything was filtered out, keep the longest *allowed* (or any) episode.
 	if _episodes.is_empty() and not raw_eps.is_empty():
-		var best: Dictionary = raw_eps[0]
+		var best: Dictionary = {}
 		var best_n := 0
 		for ep2 in raw_eps:
+			var outcome2 := str(ep2.get("outcome", ""))
+			if not allowed.is_empty() and not allowed.has(outcome2):
+				continue
 			var n: int = ep2.get("frames", []).size()
 			if n > best_n:
 				best_n = n
 				best = ep2
-		_episodes.append(best)
+		if best.is_empty():
+			# Fall back to longest overall so the viewer still opens.
+			for ep3 in raw_eps:
+				var n3: int = ep3.get("frames", []).size()
+				if n3 > best_n:
+					best_n = n3
+					best = ep3
+		if not best.is_empty():
+			_episodes.append(best)
 	var b: Dictionary = _meta.get("boundary", {})
 	_boundary = Vector2(float(b.get("width", 400)), float(b.get("height", 400)))
 	_fps = float(_meta.get("fps", 30))
