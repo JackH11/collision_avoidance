@@ -318,6 +318,6 @@ DQN trainer are under `archive/`; Untitled notebooks under `notebooks/archive/`.
 | `tests/` | pytest unit/smoke (Phase 4) |
 | `Makefile` | `test`, `ci`, `eval-suite`, `regression-gate*` |
 | `.github/workflows/ci.yml` | Install deps → tests → JSON gate → suite smoke |
-| `godot_replay/` | Godot 4.3 viewer (1920², agent-follow crop) |
+| `godot_replay/` | Godot 4.3 viewer (1920², agent+goal framing) |
 | `media/` | Sample demos + `godot_large.mp4` / trajectories |
 | `archive/` | Quarantined stubs + legacy `train_dqn.py` |
