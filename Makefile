@@ -76,11 +76,15 @@ dump-trajectory:
 	cp media/trajectories/large_best.json godot_replay/data/large_best.json
 
 # Pretty Godot 4 replay → mp4 (requires Godot 4.3+ on PATH and xvfb-run)
+# 1920² viewport + agent crop (--view-radius); high-quality H.264 encode.
 godot-movie: dump-trajectory
 	xvfb-run -a $(GODOT) --path godot_replay --write-movie ../media/godot_large.avi \
-		--fixed-fps 30 -- --trajectory res://data/large_best.json --quit-when-done --speed 1.25
-	ffmpeg -y -i media/godot_large.avi -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
+		--fixed-fps 30 -- \
+		--trajectory res://data/large_best.json --quit-when-done --speed 1.25 --view-radius 150
+	ffmpeg -y -i media/godot_large.avi \
+		-c:v libx264 -crf 17 -preset slow -pix_fmt yuv420p -movflags +faststart \
 		media/godot_large.mp4
+	rm -f media/godot_large.avi
 
 # What GitHub Actions runs (mirrors .github/workflows/ci.yml)
 ci: test regression-gate-ci eval-suite-smoke
