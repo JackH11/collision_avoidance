@@ -5,10 +5,11 @@ Dump agent trajectories to JSON for the Godot replay viewer.
 Keeps Python as the sim/policy brain; Godot only renders.
 
 Examples:
-  python dump_trajectory.py --scenario large --episodes 5 --seed 0 \\
-      --out media/trajectories/large_best.json
-  python dump_trajectory.py --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip \\
-      --algo qrdqn --scenario large --episodes 3 --out media/trajectories/run.json
+  python -m collision_avoidance.demo.dump_trajectory --scenario large --episodes 5
+  # Showcase: keep rolling until N solid successes
+  python -m collision_avoidance.demo.dump_trajectory --scenario large \\
+      --successes 4 --min-steps 70 --algo qrdqn \\
+      --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip
 """
 
 from __future__ import annotations
@@ -105,6 +106,9 @@ def dump_trajectory(
     predictor: str,
     reward_mode: Optional[str],
     include_predictions: bool,
+    successes: Optional[int] = None,
+    min_steps: int = 0,
+    max_attempts: int = 64,
 ) -> Dict[str, Any]:
     env = MovingAvoidanceEnv(
         scenario=scenario,
@@ -113,19 +117,18 @@ def dump_trajectory(
     )
     policy, algo_name, resolved = load_model(model_path, algo=algo)
     _, predict_fn = resolve_prediction_backend(predictor)
-    if hasattr(env.agent, "prediction_model"):
-        # reset recreates agent; set after each reset too
-        pass
 
     episodes_out: List[Dict[str, Any]] = []
-    for ep in range(episodes):
-        obs, info = env.reset(seed=seed + ep)
+    attempt = 0
+    target = successes if successes is not None else episodes
+    # When collecting successes, keep rolling until we have enough (capped).
+    while len(episodes_out) < target and attempt < max_attempts:
+        obs, info = env.reset(seed=seed + attempt)
         env.agent.prediction_model = predict_fn
         frames: List[Dict[str, Any]] = []
         ep_return = 0.0
         action = 0
         done = False
-        # Initial pose before first action
         preds = (
             env.agent.make_predictions(env.obstacles) if include_predictions else None
         )
@@ -144,17 +147,23 @@ def dump_trajectory(
             frames.append(_frame_snapshot(env, action, preds))
             done = bool(terminated or truncated)
 
+        outcome = _outcome(info)
+        steps = int(info.get("steps", len(frames) - 1))
+        attempt += 1
+
+        if successes is not None and (outcome != "success" or steps < min_steps):
+            continue
+
         episodes_out.append(
             {
-                "episode": ep,
-                "seed": seed + ep,
-                "outcome": _outcome(info),
+                "episode": len(episodes_out),
+                "seed": seed + attempt - 1,
+                "outcome": outcome,
                 "return": float(ep_return),
-                "steps": int(info.get("steps", len(frames) - 1)),
+                "steps": steps,
                 "frames": frames,
             }
         )
-
     payload = {
         "version": 1,
         "meta": {
@@ -162,7 +171,10 @@ def dump_trajectory(
             "algo": algo_name,
             "model": str(resolved),
             "seed": seed,
-            "episodes": episodes,
+            "episodes": len(episodes_out),
+            "attempts": attempt,
+            "successes_requested": successes,
+            "min_steps": min_steps,
             "predictor": env.prediction_backend,
             "reward_mode": env.reward_mode,
             "fps": 30,
@@ -193,6 +205,24 @@ def parse_args():
     )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--episodes", type=int, default=5)
+    p.add_argument(
+        "--successes",
+        type=int,
+        default=None,
+        help="Keep rolling until this many successful episodes (showcase mode)",
+    )
+    p.add_argument(
+        "--min-steps",
+        type=int,
+        default=0,
+        help="With --successes, discard shorter runs (avoids instant goal taps)",
+    )
+    p.add_argument(
+        "--max-attempts",
+        type=int,
+        default=64,
+        help="Cap on env resets when using --successes",
+    )
     p.add_argument(
         "--predictor",
         default="simple",
@@ -227,6 +257,9 @@ def main() -> int:
         predictor=args.predictor,
         reward_mode=args.reward_mode,
         include_predictions=not args.no_predictions,
+        successes=args.successes,
+        min_steps=args.min_steps,
+        max_attempts=args.max_attempts,
     )
     out.write_text(json.dumps(payload, separators=(",", ":")))
     n_frames = sum(len(ep["frames"]) for ep in payload["episodes"])
@@ -235,8 +268,15 @@ def main() -> int:
         outcomes[ep["outcome"]] += 1
     print(
         f"Wrote {out}  episodes={len(payload['episodes'])} frames={n_frames} "
-        f"outcomes={outcomes} size_kb={out.stat().st_size / 1024:.1f}"
+        f"outcomes={outcomes} attempts={payload['meta'].get('attempts')} "
+        f"size_kb={out.stat().st_size / 1024:.1f}"
     )
+    if args.successes and len(payload["episodes"]) < args.successes:
+        print(
+            f"WARNING: only collected {len(payload['episodes'])}/{args.successes} "
+            f"successes in {payload['meta'].get('attempts')} attempts "
+            f"(large-map transfer is imperfect — try more --max-attempts or baseline)"
+        )
     print(f"Replay in Godot: open godot_replay/ and set trajectory path to {out}")
     return 0
 
