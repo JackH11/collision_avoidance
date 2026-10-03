@@ -28,7 +28,11 @@ godot_replay/.import/
 media/trajectories/*.json
 !media/trajectories/large_best.json
 !media/trajectories/README.md
-# Raw Godot MovieWriter dumps (convert to mp4 before committing)
+# Demo renders are local/artifacts only (regenerate with make demo-* / godot-movie)
+media/*.mp4
+media/*.gif
 media/*.avi
+media/*.webm
+# Oversized Godot dumps stay local; keep .gitkeep only
 godot_replay/data/*.json
 !godot_replay/data/.gitkeep
