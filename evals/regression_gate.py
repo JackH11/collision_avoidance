@@ -36,8 +36,8 @@ DEFAULT_CONFIG = ROOT / "evals" / "gate_config.yaml"
 TRAIN_HINT = """\
 Phase 2 checkpoints are gitignored under models/. Train then re-run the gate:
 
-  python train.py --algo ppo --scenario easy --reward-mode new --timesteps 400000
-  python train.py --algo qrdqn --scenario easy --reward-mode new --timesteps 300000
+  python -m collision_avoidance.train --algo ppo --scenario easy --reward-mode new --timesteps 400000
+  python -m collision_avoidance.train --algo qrdqn --scenario easy --reward-mode new --timesteps 300000
 
 Or validate thresholds against a checked-in summary (no zip required):
 
@@ -162,7 +162,7 @@ def main() -> int:
                 return 0
             return 2
 
-        from eval_policy import evaluate
+        from collision_avoidance.eval.eval_policy import evaluate
 
         summary = evaluate(
             model_path=str(model_path),

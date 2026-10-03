@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from config import RAW_CONFIG, load_config, resolve_scenario
-from gym_env import MovingAvoidanceEnv
+from collision_avoidance.config import RAW_CONFIG, load_config, resolve_scenario
+from collision_avoidance.env.gym_env import MovingAvoidanceEnv
 
 
 def test_load_config_has_scenarios():

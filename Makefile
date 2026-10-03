@@ -50,25 +50,25 @@ regression-gate-ci: regression-gate-json
 
 # Headless demo clip for README (GIF + MP4). Soft-fails if no model zip / ffmpeg.
 demo-record:
-	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) -m collision_avoidance.demo \
 		--headless --record media/demo.gif --scenario baseline --episodes 3 --fps 30
-	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) -m collision_avoidance.demo \
 		--headless --record media/demo.mp4 --scenario baseline --episodes 3 --fps 30
 
 # Best Phase 2 agent on the large 400×400 arena
 demo-large:
-	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) -m collision_avoidance.demo \
 		--headless --scenario large --record media/demo_large.gif \
 		--model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
 		--episodes 5 --fps 30 --seed 0
-	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) main.py \
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) -m collision_avoidance.demo \
 		--headless --scenario large --record media/demo_large.mp4 \
 		--model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
 		--episodes 5 --fps 30 --seed 0
 
 # Trajectory JSON for Godot (Python = brain)
 dump-trajectory:
-	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) dump_trajectory.py \
+	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) -m collision_avoidance.demo.dump_trajectory \
 		--scenario large --episodes 5 --seed 0 \
 		--model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
 		--out media/trajectories/large_best.json

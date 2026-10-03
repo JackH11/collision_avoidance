@@ -59,21 +59,22 @@ shape `(pred_x, pred_y, std_x, std_y)`.
 ## Train (Phase 2 — CNN + PPO / QR-DQN)
 
 Primary path is **Option A**: spatial grid obs → custom CNN (`GridCnnExtractor`)
-→ **PPO** and/or **QR-DQN** (sb3-contrib). Vanilla DQN + `MlpPolicy` is kept only
-as the `baseline`-era reference (`train_dqn.py`).
+→ **PPO** and/or **QR-DQN** (sb3-contrib). Vanilla DQN + `MlpPolicy` is archived
+under `archive/train_dqn.py` (baseline-era reference only).
 
 ```bash
 # Default: PPO + CnnPolicy, scenario=easy, reward=new, 400k steps, 8 envs
-python train.py
+python -m collision_avoidance.train
+# (root shim also works: python train.py)
 
 # QR-DQN + CNN
-python train.py --algo qrdqn --scenario easy --timesteps 300000
+python -m collision_avoidance.train --algo qrdqn --scenario easy --timesteps 300000
 
 # Train on baseline scenario
-python train.py --algo ppo --scenario baseline --reward-mode new --timesteps 400000
+python -m collision_avoidance.train --algo ppo --scenario baseline --reward-mode new --timesteps 400000
 
 # Smoke wiring check
-python train.py --smoke
+python -m collision_avoidance.train --smoke
 ```
 
 Artifacts (gitignored — do not commit large dumps):
@@ -92,17 +93,18 @@ View TensorBoard:
 tensorboard --logdir ./tb_logs/
 ```
 
-Continue training from a checkpoint (command also printed at end of `train.py`):
+Continue training from a checkpoint (command also printed at end of a run):
 
 ```bash
-python train.py --algo ppo --resume models/ppo_CnnPolicy_easy_s0/best_model.zip \
+python -m collision_avoidance.train --algo ppo \
+  --resume models/ppo_CnnPolicy_easy_s0/best_model.zip \
   --timesteps 200000 --run-name ppo_CnnPolicy_easy_s0_cont
 ```
 
-Legacy short DQN+MLP train (reference only):
+Legacy short DQN+MLP train (reference only, not on the active path):
 
 ```bash
-python train_dqn.py
+python archive/train_dqn.py
 ```
 
 ## Evaluate
@@ -113,13 +115,13 @@ Auto-detects DQN / PPO / QR-DQN from the zip (or pass `--algo`):
 
 ```bash
 # Legacy baseline agent (Phase 1 numbers: ~2% success on baseline/old)
-python eval_policy.py --model dqn_avoidance_agent5 --episodes 50 --seed 0
+python -m collision_avoidance.eval --model dqn_avoidance_agent5 --episodes 50 --seed 0
 
 # Phase 2 CNN checkpoint
-python eval_policy.py --model models/ppo_CnnPolicy_easy_s0/final_model.zip \
+python -m collision_avoidance.eval --model models/ppo_CnnPolicy_easy_s0/final_model.zip \
   --algo ppo --scenario baseline --reward-mode old --episodes 50 --seed 0
 
-python eval_policy.py --scenario hard --reward-mode old --episodes 20
+python -m collision_avoidance.eval --scenario hard --reward-mode old --episodes 20
 ```
 
 Phase 2 CPU comparison table (N=50, seed=0, `baseline`/`old`, simple predictor)
@@ -162,8 +164,8 @@ make regression-gate-json
 If `models/` is empty, train first (artifacts are gitignored):
 
 ```bash
-python train.py --algo ppo --scenario easy --reward-mode new --timesteps 400000
-python train.py --algo qrdqn --scenario easy --reward-mode new --timesteps 300000
+python -m collision_avoidance.train --algo ppo --scenario easy --reward-mode new --timesteps 400000
+python -m collision_avoidance.train --algo qrdqn --scenario easy --reward-mode new --timesteps 300000
 ```
 
 **Interpreting the gate:** PASS means the candidate stays in the Phase 2 CNN
@@ -180,16 +182,19 @@ timeout counters, prediction cones on, policy-grid dots off.
 
 ```bash
 # Interactive window
-python main.py
-python main.py --mode demo --scenario baseline --seed 0
-python main.py --mode research --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
+python -m collision_avoidance.demo
+python -m collision_avoidance.demo --mode demo --scenario baseline --seed 0
+python -m collision_avoidance.demo --mode research \
+  --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
 
 # Best agent on the large 400×400 map
-python main.py --scenario large --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
-python main.py --headless --scenario large --record media/demo_large.gif --episodes 5 --fps 30
+python -m collision_avoidance.demo --scenario large \
+  --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
+python -m collision_avoidance.demo --headless --scenario large \
+  --record media/demo_large.gif --episodes 5 --fps 30
 
 # Headless clip for README / talks (.gif or .mp4; needs ffmpeg for mp4)
-python main.py --headless --record media/demo.gif --episodes 3 --fps 30
+python -m collision_avoidance.demo --headless --record media/demo.gif --episodes 3 --fps 30
 make demo-record
 ```
 
@@ -215,7 +220,7 @@ Python dumps trajectories; a Godot 4 project replays them with trails, soft
 disks, and camera follow — without porting the RL env.
 
 ```bash
-python dump_trajectory.py --scenario large --episodes 5 --seed 0 \
+python -m collision_avoidance.demo.dump_trajectory --scenario large --episodes 5 --seed 0 \
   --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn
 cp media/trajectories/large_best.json godot_replay/data/large_best.json
 godot --path godot_replay
@@ -237,7 +242,7 @@ See [`godot_replay/README.md`](godot_replay/README.md). Sample render:
 
 ## Predictor path (optional TF)
 
-1. Collect trajectories via `main.py` with `SAVE = True` → `data/train_raw.csv`
+1. Collect trajectories via `python -m collision_avoidance.demo` with `SAVE = True` → `data/train_raw.csv`
 2. Build lag features: `transforms/clean.py` → `data/train_lag.csv`
 3. Train Keras model: `nn/nn.py` → artifacts under `nn/models/` (e.g. `j_10_5.keras`)
 4. Set `prediction.backend: nn_uncertainty` in `config.yaml` after installing
@@ -281,8 +286,8 @@ poses under the simple predictor. TF/SB3 training RNG is not asserted.
 
 Large training artifacts are gitignored (`agents/*`, `dqn_tensorboard/*`,
 `checkpoints/*`, `tb_logs/*`, `runs/*`, `models/*`). Keep local zips /
-TensorBoard runs out of git; reproduce with `train.py` or evaluate the
-checked-in `dqn_avoidance_agent5.zip` when present.
+TensorBoard runs out of git; reproduce with `python -m collision_avoidance.train`
+or evaluate the checked-in `dqn_avoidance_agent5.zip` when present.
 
 ## Restore baseline
 
@@ -292,29 +297,27 @@ git checkout baseline
 
 ## Project layout (high level)
 
-Layout stays mostly flat (root CLIs) so existing train/eval paths keep working.
-Dead stubs / Untitled notebooks are quarantined under `archive/` and
-`notebooks/archive/`.
+Core code lives under the `collision_avoidance` package. Root `main.py` /
+`train.py` / `eval_policy.py` / `dump_trajectory.py` (and a few import shims)
+re-export the package so old commands still work. Dead stubs and the legacy
+DQN trainer are under `archive/`; Untitled notebooks under `notebooks/archive/`.
 
 | Path | Role |
 |------|------|
-| `gym_env.py` | `MovingAvoidanceEnv` (Gymnasium), movers, grid obs |
-| `train.py` | Phase 2 config-driven CNN training (PPO / QR-DQN) |
+| `collision_avoidance/env/` | `MovingAvoidanceEnv`, movers, grid obs |
+| `collision_avoidance/policy/` | `GridCnnExtractor`, SB3 zip loader |
+| `collision_avoidance/prediction/` | Simple + NN prediction backends |
+| `collision_avoidance/train/` | Phase 2 CNN training (PPO / QR-DQN) |
+| `collision_avoidance/eval/` | Offline eval + safety metrics |
+| `collision_avoidance/demo/` | Pygame demo + trajectory dump for Godot |
 | `train_config.yaml` | Training hyperparameters / seeds / paths |
-| `policies.py` | Custom `GridCnnExtractor` for `(C,H,W)` float grids |
-| `train_dqn.py` | Legacy SB3 DQN + MlpPolicy (baseline reference) |
-| `eval_policy.py` | Offline eval + safety metrics |
+| `config.yaml` | Sim / scenario knobs |
 | `evals/run_suite.py` | Multi-scenario suite → `evals/artifacts/` |
 | `evals/regression_gate.py` | Success/collision regression gate |
 | `evals/baselines.py` | random / greedy / freeze controls |
 | `tests/` | pytest unit/smoke (Phase 4) |
 | `Makefile` | `test`, `ci`, `eval-suite`, `regression-gate*` |
 | `.github/workflows/ci.yml` | Install deps → tests → JSON gate → suite smoke |
-| `model_loader.py` | Shared DQN/PPO/QR-DQN zip loader |
-| `main.py` | Phase 5 demo (HUD, modes, headless record) |
-| `dump_trajectory.py` | JSON dumps for Godot replay |
 | `godot_replay/` | Godot 4.3 viewer (1920², agent-follow crop) |
 | `media/` | Sample demos + `godot_large.mp4` / trajectories |
-| `model_prediction.py` | Simple + NN prediction backends |
-| `config.yaml` | Single source of sim/config knobs |
-| `archive/` | Quarantined dead stubs (not imported) |
+| `archive/` | Quarantined stubs + legacy `train_dqn.py` |

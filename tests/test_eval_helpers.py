@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from eval_policy import _cone_risk_fraction, _percentile, evaluate
+from collision_avoidance.eval.eval_policy import _cone_risk_fraction, _percentile, evaluate
 from evals.baselines import (
     BASELINE_FACTORIES,
     make_freeze_policy,
@@ -17,7 +17,7 @@ from evals.baselines import (
     make_random_policy,
 )
 from evals.regression_gate import check_thresholds, load_gate_config
-from gym_env import MovingAvoidanceEnv
+from collision_avoidance.env.gym_env import MovingAvoidanceEnv
 
 
 ROOT = Path(__file__).resolve().parents[1]
