@@ -69,18 +69,19 @@ demo-large:
 # Trajectory JSON for Godot (Python = brain)
 dump-trajectory:
 	SDL_VIDEODRIVER=dummy PYGAME_HIDE_SUPPORT_PROMPT=1 $(PYTHON) -m collision_avoidance.demo.dump_trajectory \
-		--scenario large --episodes 5 --seed 0 \
+		--scenario large --episodes 8 --seed 0 \
 		--model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
 		--out media/trajectories/large_best.json
 	mkdir -p godot_replay/data
 	cp media/trajectories/large_best.json godot_replay/data/large_best.json
 
 # Pretty Godot 4 replay → mp4 (requires Godot 4.3+ on PATH and xvfb-run)
-# 1920² viewport + agent crop (--view-radius); high-quality H.264 encode.
+# 1920² + agent↔goal framing (min span 280); slower playback; skip tiny episodes.
 godot-movie: dump-trajectory
 	xvfb-run -a $(GODOT) --path godot_replay --write-movie ../media/godot_large.avi \
 		--fixed-fps 30 -- \
-		--trajectory res://data/large_best.json --quit-when-done --speed 1.25 --view-radius 150
+		--trajectory res://data/large_best.json --quit-when-done \
+		--frame agent_goal --min-view-span 280 --min-frames 50 --speed 0.85
 	ffmpeg -y -i media/godot_large.avi \
 		-c:v libx264 -crf 17 -preset slow -pix_fmt yuv420p -movflags +faststart \
 		media/godot_large.mp4

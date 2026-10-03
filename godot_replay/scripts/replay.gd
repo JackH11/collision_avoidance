@@ -6,15 +6,21 @@ extends Node2D
 @export var playback_speed: float = 1.0
 @export var loop_episodes: bool = true
 @export var auto_advance_episodes: bool = true
-@export var trail_length: int = 64
+@export var trail_length: int = 96
 @export var show_predictions: bool = true
 @export var quit_when_done: bool = false
-## World units visible across the short viewport axis. Lower = tighter / crisper sprites.
-## Use a large value (or --overview) to fit the whole arena.
-@export var view_radius: float = 160.0
-@export var overview: bool = false
+## Framing: agent_goal (default) keeps agent+goal on screen; agent = follow only; overview = full arena.
+@export var frame_mode: String = "agent_goal"
+## Minimum world span (width) so late-episode closeness doesn't collapse the crop.
+@export var min_view_span: float = 280.0
+## Extra world padding around the agent–goal box.
+@export var frame_padding: float = 56.0
+## Legacy half-span for --frame agent (ignored in agent_goal / overview).
+@export var view_radius: float = 200.0
 ## Extra visual scale on disks (sim radii unchanged).
-@export var sprite_scale: float = 1.35
+@export var sprite_scale: float = 1.25
+## Skip tiny episodes so the reel doesn't feel like instant goal taps.
+@export var min_episode_frames: int = 50
 
 var _data: Dictionary = {}
 var _episodes: Array = []
@@ -36,7 +42,7 @@ func _ready() -> void:
 	_hud = $HUD/Panel/Label
 	var vp := get_viewport().get_visible_rect().size
 	_viewport_size = minf(vp.x, vp.y)
-	# CLI override: godot -- --trajectory path.json --quit-when-done --view-radius 140
+	# CLI: godot -- --trajectory path.json --frame agent_goal --min-frames 50 --speed 0.85
 	var args := OS.get_cmdline_user_args()
 	var i := 0
 	while i < args.size():
@@ -52,10 +58,22 @@ func _ready() -> void:
 			"--view-radius":
 				if i + 1 < args.size():
 					view_radius = float(args[i + 1])
-					overview = false
+					frame_mode = "agent"
+					i += 1
+			"--min-view-span":
+				if i + 1 < args.size():
+					min_view_span = float(args[i + 1])
+					i += 1
+			"--min-frames":
+				if i + 1 < args.size():
+					min_episode_frames = int(args[i + 1])
+					i += 1
+			"--frame":
+				if i + 1 < args.size():
+					frame_mode = str(args[i + 1])
 					i += 1
 			"--overview":
-				overview = true
+				frame_mode = "overview"
 			"--quit-when-done":
 				quit_when_done = true
 		i += 1
@@ -63,7 +81,7 @@ func _ready() -> void:
 		_hud.text = "Failed to load:\n%s" % trajectory_path
 		push_error(_hud.text)
 		return
-	_apply_camera_zoom()
+	_apply_static_camera_if_needed()
 	_reset_episode(0)
 
 
@@ -86,27 +104,68 @@ func _load_trajectory(path: String) -> bool:
 		return false
 	_data = parsed
 	_meta = _data.get("meta", {})
-	_episodes = _data.get("episodes", [])
+	var raw_eps: Array = _data.get("episodes", [])
+	_episodes = []
+	for ep in raw_eps:
+		var frames: Array = ep.get("frames", [])
+		if frames.size() >= min_episode_frames:
+			_episodes.append(ep)
+	# If everything was filtered out, keep the longest raw episode so playback still works.
+	if _episodes.is_empty() and not raw_eps.is_empty():
+		var best: Dictionary = raw_eps[0]
+		var best_n := 0
+		for ep2 in raw_eps:
+			var n: int = ep2.get("frames", []).size()
+			if n > best_n:
+				best_n = n
+				best = ep2
+		_episodes.append(best)
 	var b: Dictionary = _meta.get("boundary", {})
 	_boundary = Vector2(float(b.get("width", 400)), float(b.get("height", 400)))
 	_fps = float(_meta.get("fps", 30))
 	return _episodes.size() > 0
 
 
-func _apply_camera_zoom() -> void:
-	var margin := 1.08
-	var zoom_fit: float
-	if overview:
-		zoom_fit = minf(
+func _apply_static_camera_if_needed() -> void:
+	if frame_mode == "overview":
+		var margin := 1.08
+		var zoom_fit: float = minf(
 			_viewport_size / (_boundary.x * margin),
 			_viewport_size / (_boundary.y * margin)
 		)
+		_camera.zoom = Vector2(zoom_fit, zoom_fit)
+		_camera.position = _boundary * 0.5
+	elif frame_mode == "agent":
+		var margin := 1.08
+		var span: float = maxf(view_radius * 2.0, min_view_span)
+		var zoom_fit2: float = _viewport_size / (span * margin)
+		_camera.zoom = Vector2(zoom_fit2, zoom_fit2)
+		_camera.position = _boundary * 0.5
+
+
+func _update_follow_camera(agent_pos: Vector2, goal_pos: Vector2) -> void:
+	if frame_mode == "overview":
+		return
+	var margin := 1.06
+	var center: Vector2
+	var span: float
+	if frame_mode == "agent_goal":
+		center = (agent_pos + goal_pos) * 0.5
+		var dx: float = absf(agent_pos.x - goal_pos.x)
+		var dy: float = absf(agent_pos.y - goal_pos.y)
+		span = maxf(dx, dy) + frame_padding * 2.0
+		span = clampf(span, min_view_span, maxf(_boundary.x, _boundary.y))
 	else:
-		# view_radius = half-width of visible world box → diameter = 2 * view_radius
-		var span: float = maxf(view_radius * 2.0, 32.0)
-		zoom_fit = _viewport_size / (span * margin)
+		# agent-only follow
+		center = agent_pos
+		span = maxf(view_radius * 2.0, min_view_span)
+	var zoom_fit: float = _viewport_size / (span * margin)
 	_camera.zoom = Vector2(zoom_fit, zoom_fit)
-	_camera.position = _boundary * 0.5
+	# Keep the frame inside the arena when possible.
+	var half: float = span * 0.5
+	center.x = clampf(center.x, half, _boundary.x - half)
+	center.y = clampf(center.y, half, _boundary.y - half)
+	_camera.position = center
 
 
 func _reset_episode(idx: int) -> void:
@@ -133,7 +192,7 @@ func _process(delta: float) -> void:
 				if quit_when_done and not _done_quitting:
 					_done_quitting = true
 					# Give MovieWriter a moment to flush last frames
-					await get_tree().create_timer(0.35).timeout
+					await get_tree().create_timer(0.5).timeout
 					get_tree().quit()
 					return
 				if loop_episodes:
@@ -146,11 +205,10 @@ func _process(delta: float) -> void:
 	var fi := int(_frame_idx)
 	var fr: Dictionary = frames[fi]
 	var agent: Dictionary = fr.get("agent", {})
+	var goal: Dictionary = fr.get("goal", {})
 	var pos := Vector2(float(agent.get("x", 0)), float(agent.get("y", 0)))
-	if overview:
-		_camera.position = _boundary * 0.5
-	else:
-		_camera.position = pos
+	var gpos := Vector2(float(goal.get("x", 0)), float(goal.get("y", 0)))
+	_update_follow_camera(pos, gpos)
 	_push_trail(pos)
 	_update_hud()
 	queue_redraw()
@@ -177,13 +235,17 @@ func _update_hud() -> void:
 	var frames: Array = ep.get("frames", [])
 	var fi := clampi(int(_frame_idx), 0, max(frames.size() - 1, 0))
 	var pause_s := "  PAUSED" if _paused else ""
-	var cam_s := "overview" if overview else ("view±%.0f" % view_radius)
+	var cam_s := frame_mode
+	if frame_mode == "agent_goal":
+		cam_s = "agent+goal ≥%.0f" % min_view_span
+	elif frame_mode == "agent":
+		cam_s = "agent ±%.0f" % view_radius
 	_hud.text = (
 		"%s  |  %s  |  ep %d/%d  |  %s\n"
 		% [str(_meta.get("algo", "?")).to_upper(), str(_meta.get("scenario", "?")), _ep_idx + 1, _episodes.size(), cam_s]
 		+ "outcome: %s   frame %d/%d%s\n"
 		% [str(ep.get("outcome", "?")), fi + 1, frames.size(), pause_s]
-		+ "Space pause · N next · --view-radius / --overview"
+		+ "Space pause · N next · --frame agent_goal|agent|overview"
 	)
 
 
