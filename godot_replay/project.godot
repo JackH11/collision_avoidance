@@ -10,14 +10,19 @@ config/features=PackedStringArray("4.3", "Forward Plus")
 config/icon="res://icon.svg"
 
 [display]
-window/size/viewport_width=960
-window/size/viewport_height=960
+; High-res square for crisp MovieWriter / talk clips (was 960).
+window/size/viewport_width=1920
+window/size/viewport_height=1920
 window/size/mode=0
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
+window/stretch/scale_mode="fractional"
 
 [rendering]
+; gl_compatibility: no Vulkan required on headless/CI (2D MSAA unsupported here).
+; Crispness comes from 1920² + tight --view-radius crop + CRF 17 encode.
 renderer/rendering_method="gl_compatibility"
+textures/canvas_textures/default_texture_filter=1
 environment/defaults/default_clear_color=Color(0.06, 0.08, 0.12, 1)
 
 [debug]

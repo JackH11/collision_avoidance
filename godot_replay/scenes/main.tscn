@@ -7,18 +7,18 @@ script = ExtResource("1_replay")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position_smoothing_enabled = true
-position_smoothing_speed = 6.0
-zoom = Vector2(1.6, 1.6)
+position_smoothing_speed = 8.0
+zoom = Vector2(6, 6)
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
 [node name="Panel" type="PanelContainer" parent="HUD"]
-offset_left = 16.0
-offset_top = 16.0
-offset_right = 420.0
-offset_bottom = 140.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 560.0
+offset_bottom = 160.0
 
 [node name="Label" type="Label" parent="HUD/Panel"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 22
 text = "Loading trajectory…"
