@@ -1,17 +1,16 @@
 # Godot trajectory replay (Phase 5)
 
 Python stays the **sim + policy** brain. Godot only **renders** JSON dumps from
-`dump_trajectory.py` — nicer lighting, trails, camera follow, prediction cones.
+`dump_trajectory.py` — nicer lighting, trails, fixed full-board camera, prediction cones.
 
-Default render is **1920×1920** with **agent+goal framing** (keeps both on
-screen, minimum span ~280) so approaches read clearly. Use `--frame agent` for
-a tighter follow, or `--overview` for the full arena.
+Default render is **1920×1920** with a **fixed full-board camera** (`--overview`).
+Optional follow crops: `--frame agent_goal` or `--frame agent`.
 
 ## Quick start
 
 ```bash
 # 1) Dump the best agent on the large map (needs a models/*.zip locally)
-python -m collision_avoidance.demo.dump_trajectory --scenario large --episodes 8 --seed 0 \
+python -m collision_avoidance.demo.dump_trajectory --scenario large --episodes 5 --seed 0 \
   --model models/qrdqn_CnnPolicy_easy_s0_cont/best_model.zip --algo qrdqn \
   --out media/trajectories/large_best.json
 
@@ -29,10 +28,10 @@ godot --path godot_replay
 ```bash
 godot --path godot_replay -- --trajectory res://data/large_best.json
 godot --path godot_replay -- --trajectory /abs/path/to/run.json --speed 0.85
-# Framing (default agent_goal keeps goal visible; skips episodes < --min-frames):
-godot --path godot_replay -- --frame agent_goal --min-view-span 280 --min-frames 50
+# Fixed full board (default) vs follow crops; showcase filters:
+godot --path godot_replay -- --overview --outcomes success --min-frames 60
+godot --path godot_replay -- --frame agent_goal --min-view-span 280
 godot --path godot_replay -- --frame agent --view-radius 160
-godot --path godot_replay -- --overview
 ```
 
 ### Record a video (Godot Movie Writer)
@@ -43,7 +42,7 @@ godot --path godot_replay -- --overview
 xvfb-run -a godot --path godot_replay --write-movie ../media/godot_large.avi \
   --fixed-fps 30 -- \
   --trajectory res://data/large_best.json --quit-when-done \
-  --frame agent_goal --min-view-span 280 --min-frames 50 --speed 0.85
+  --overview --min-frames 60 --outcomes success --speed 0.8
 ffmpeg -y -i media/godot_large.avi \
   -c:v libx264 -crf 17 -preset slow -pix_fmt yuv420p -movflags +faststart \
   media/godot_large.mp4

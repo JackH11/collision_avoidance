@@ -9,8 +9,8 @@ extends Node2D
 @export var trail_length: int = 96
 @export var show_predictions: bool = true
 @export var quit_when_done: bool = false
-## Framing: agent_goal (default) keeps agent+goal on screen; agent = follow only; overview = full arena.
-@export var frame_mode: String = "agent_goal"
+## Framing: overview (default) = fixed full arena; agent_goal / agent = follow crops.
+@export var frame_mode: String = "overview"
 ## Minimum world span (width) so late-episode closeness doesn't collapse the crop.
 @export var min_view_span: float = 280.0
 ## Extra world padding around the agent–goal box.
@@ -152,6 +152,7 @@ func _load_trajectory(path: String) -> bool:
 
 func _apply_static_camera_if_needed() -> void:
 	if frame_mode == "overview":
+		_camera.position_smoothing_enabled = false
 		var margin := 1.08
 		var zoom_fit: float = minf(
 			_viewport_size / (_boundary.x * margin),
@@ -160,15 +161,20 @@ func _apply_static_camera_if_needed() -> void:
 		_camera.zoom = Vector2(zoom_fit, zoom_fit)
 		_camera.position = _boundary * 0.5
 	elif frame_mode == "agent":
+		_camera.position_smoothing_enabled = true
 		var margin := 1.08
 		var span: float = maxf(view_radius * 2.0, min_view_span)
 		var zoom_fit2: float = _viewport_size / (span * margin)
 		_camera.zoom = Vector2(zoom_fit2, zoom_fit2)
 		_camera.position = _boundary * 0.5
+	else:
+		_camera.position_smoothing_enabled = true
 
 
 func _update_follow_camera(agent_pos: Vector2, goal_pos: Vector2) -> void:
 	if frame_mode == "overview":
+		# Stay locked on the full board — never chase the agent.
+		_camera.position = _boundary * 0.5
 		return
 	var margin := 1.06
 	var center: Vector2
@@ -260,7 +266,9 @@ func _update_hud() -> void:
 	var fi := clampi(int(_frame_idx), 0, max(frames.size() - 1, 0))
 	var pause_s := "  PAUSED" if _paused else ""
 	var cam_s := frame_mode
-	if frame_mode == "agent_goal":
+	if frame_mode == "overview":
+		cam_s = "full board"
+	elif frame_mode == "agent_goal":
 		cam_s = "agent+goal ≥%.0f" % min_view_span
 	elif frame_mode == "agent":
 		cam_s = "agent ±%.0f" % view_radius
@@ -269,7 +277,7 @@ func _update_hud() -> void:
 		% [str(_meta.get("algo", "?")).to_upper(), str(_meta.get("scenario", "?")), _ep_idx + 1, _episodes.size(), cam_s]
 		+ "outcome: %s   frame %d/%d%s\n"
 		% [str(ep.get("outcome", "?")), fi + 1, frames.size(), pause_s]
-		+ "Space pause · N next · --frame agent_goal|agent|overview"
+		+ "Space pause · N next · --overview (default)"
 	)
 
 

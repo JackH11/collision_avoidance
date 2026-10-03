@@ -77,13 +77,12 @@ dump-trajectory:
 	cp media/trajectories/large_best.json godot_replay/data/large_best.json
 
 # Pretty Godot 4 replay → mp4 (requires Godot 4.3+ on PATH and xvfb-run)
-# Success-only reel, agent↔goal framing, slower playback.
+# Fixed full-board camera; success-only reel; slower playback.
 godot-movie: dump-trajectory
 	xvfb-run -a $(GODOT) --path godot_replay --write-movie ../media/godot_large.avi \
 		--fixed-fps 30 -- \
 		--trajectory res://data/large_best.json --quit-when-done \
-		--frame agent_goal --min-view-span 280 --min-frames 60 \
-		--outcomes success --speed 0.8
+		--overview --min-frames 60 --outcomes success --speed 0.8
 	ffmpeg -y -i media/godot_large.avi \
 		-c:v libx264 -crf 17 -preset slow -pix_fmt yuv420p -movflags +faststart \
 		media/godot_large.mp4
