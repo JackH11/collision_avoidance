@@ -1,6 +1,6 @@
 from stable_baselines3 import DQN
 from stable_baselines3.common.env_util import make_vec_env
-from gym_env import MovingAvoidanceEnv
+from collision_avoidance.env.gym_env import MovingAvoidanceEnv
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
 import numpy as np
 from stable_baselines3.common.utils import get_schedule_fn, get_linear_fn

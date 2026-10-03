@@ -10,7 +10,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
 import pygame
 
-from main import FrameRecorder, ViewOpts, parse_args
+from collision_avoidance.demo.main import FrameRecorder, ViewOpts, parse_args
 
 
 def test_parse_args_defaults():

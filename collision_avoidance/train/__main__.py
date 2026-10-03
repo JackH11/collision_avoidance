@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Root CLI shim — training. Prefer: python -m collision_avoidance.train.train"""
-
 from collision_avoidance.train.train import main
 
 if __name__ == "__main__":

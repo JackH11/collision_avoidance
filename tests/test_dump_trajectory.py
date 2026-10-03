@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from dump_trajectory import dump_trajectory
+from collision_avoidance.demo.dump_trajectory import dump_trajectory
 
 
 @pytest.fixture

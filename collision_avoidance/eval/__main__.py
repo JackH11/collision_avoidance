@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Root CLI shim — eval. Prefer: python -m collision_avoidance.eval.eval_policy"""
-
 from collision_avoidance.eval.eval_policy import main
 
 if __name__ == "__main__":
