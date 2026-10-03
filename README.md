@@ -319,7 +319,7 @@ Dead stubs / Untitled notebooks are quarantined under `archive/` and
 | `main.py` | Phase 5 demo (HUD, modes, headless record) |
 | `dump_trajectory.py` | JSON dumps for Godot replay |
 | `godot_replay/` | Godot 4.3 viewer (render-only) |
-| `media/` | Sample demos + `godot_large.mp4` / trajectories |
+| `media/` | Local demo renders (gitignored) + trajectory sample |
 | `model_prediction.py` | Simple + NN prediction backends |
 | `config.yaml` | Single source of sim/config knobs |
 | `archive/` | Quarantined dead stubs (not imported) |
